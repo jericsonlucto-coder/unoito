@@ -1,4 +1,4 @@
-/* globals.css - Complete CSS for 4-Player Uno Game */
+/* globals.css - Complete CSS for 4-Player Uno Game with Rotated Cards */
 
 *,
 *::after,
@@ -99,7 +99,7 @@ body {
     max-width: 80vw;
 }
 
-/* CPU Vertical Hand (Left & Right) */
+/* CPU Vertical Hand (Left & Right) - With Rotation */
 .cpu-hand-vertical {
     display: flex;
     flex-direction: column;
@@ -110,6 +110,41 @@ body {
     backdrop-filter: blur(5px);
     max-height: 60vh;
     overflow-y: auto;
+}
+
+/* Left CPU - Rotate cards to the right (clockwise) */
+.cpu-left .cpu-hand-vertical .cpu-card-vertical {
+    transform: rotate(90deg);
+    transform-origin: center;
+    margin: 1rem 0;
+}
+
+/* Right CPU - Rotate cards to the left (counter-clockwise) */
+.cpu-right .cpu-hand-vertical .cpu-card-vertical {
+    transform: rotate(-90deg);
+    transform-origin: center;
+    margin: 1rem 0;
+}
+
+/* Adjust container for rotated cards */
+.cpu-left .cpu-hand-vertical,
+.cpu-right .cpu-hand-vertical {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    gap: 2rem;
+    padding: 2rem 1rem;
+}
+
+/* For left CPU, stack rotated cards properly */
+.cpu-left .cpu-hand-vertical {
+    flex-direction: row;
+}
+
+/* For right CPU, stack rotated cards properly */
+.cpu-right .cpu-hand-vertical {
+    flex-direction: row;
 }
 
 /* Custom scrollbar for vertical hands */
@@ -136,11 +171,27 @@ body {
 }
 
 .cpu-card-vertical {
-    width: 100px;
+    width: 70px;
     height: auto;
     transition: all 0.2s ease;
     border-radius: 0.8rem;
     box-shadow: 0 0.4rem 0.8rem rgba(0, 0, 0, 0.3);
+}
+
+/* Hover effects for rotated cards */
+.cpu-left .cpu-card-vertical:hover,
+.cpu-right .cpu-card-vertical:hover {
+    transform: scale(1.05);
+    transition: all 0.2s ease;
+    box-shadow: 0 0.8rem 1.6rem rgba(0, 0, 0, 0.4);
+}
+
+.cpu-left .cpu-card-vertical:hover {
+    transform: rotate(90deg) scale(1.05);
+}
+
+.cpu-right .cpu-card-vertical:hover {
+    transform: rotate(-90deg) scale(1.05);
 }
 
 /* Center Area */
@@ -389,6 +440,17 @@ body {
     transform: translateY(-50%);
 }
 
+/* Adjust UNO animation for rotated CPUs */
+.cpu-left .cpu-animation-left {
+    left: -60px;
+    transform: translateY(-50%) rotate(90deg);
+}
+
+.cpu-right .cpu-animation-right {
+    right: -60px;
+    transform: translateY(-50%) rotate(-90deg);
+}
+
 @keyframes unoFloat {
     0%, 100% {
         opacity: 1;
@@ -600,6 +662,10 @@ body {
     .cpu-right {
         right: 5px;
     }
+    
+    .cpu-card-vertical {
+        width: 60px;
+    }
 }
 
 @media (max-width: 968px) {
@@ -666,6 +732,10 @@ body {
         width: 50px;
     }
     
+    .cpu-card-vertical {
+        width: 50px;
+    }
+    
     .player-card {
         width: 60px;
     }
@@ -714,6 +784,10 @@ body {
 
 @media (max-width: 480px) {
     .cpu-card {
+        width: 40px;
+    }
+    
+    .cpu-card-vertical {
         width: 40px;
     }
     
@@ -844,4 +918,66 @@ body {
 
 .player-card.active {
     animation: activeGlow 1s ease-in-out infinite;
+}
+
+/* Specific styles for rotated cards to ensure proper spacing */
+.cpu-left .cpu-hand-vertical,
+.cpu-right .cpu-hand-vertical {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    gap: 2rem;
+    padding: 2rem 1rem;
+    min-width: 80px;
+}
+
+/* Ensure images inside rotated divs maintain aspect ratio */
+.cpu-left .cpu-card-vertical img,
+.cpu-right .cpu-card-vertical img {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+
+/* Adjust container width for rotated cards */
+.cpu-left,
+.cpu-right {
+    width: auto;
+    min-width: 100px;
+}
+
+/* Make sure the card container doesn't overflow */
+.cpu-left .cpu-hand-vertical {
+    max-height: 70vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.cpu-right .cpu-hand-vertical {
+    max-height: 70vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+/* Fix for back card rotation */
+.cpu-left .cpu-card-vertical,
+.cpu-right .cpu-card-vertical {
+    display: block;
+    width: 70px;
+    height: auto;
+}
+
+@media (max-width: 1200px) {
+    .cpu-left .cpu-card-vertical,
+    .cpu-right .cpu-card-vertical {
+        width: 60px;
+    }
+}
+
+@media (max-width: 768px) {
+    .cpu-left .cpu-card-vertical,
+    .cpu-right .cpu-card-vertical {
+        width: 50px;
+    }
 }
