@@ -1042,3 +1042,943 @@ body {
         padding: 0.5rem 0.2rem;
     }
 }
+The key changes made to reduce gaps:
+
+Reduced gap property: Changed from 1rem to 0.3rem (and 0.25rem with !important)
+
+Reduced margin on cards: Changed from 1rem 0 to 0.2rem 0 (and 0.15rem 0)
+
+Reduced padding: Changed container padding from 1rem to 0.8rem
+
+Smaller scrollbar: Reduced scrollbar width from 5px to 3px
+
+Tighter card spacing: Cards are now much closer together vertically
+
+Responsive adjustments: Even smaller gaps on mobile devices
+
+Reduced card shadow: Slightly smaller shadow for vertical cards to reduce visual bulk
+
+Now the left and right CPU cards will have much smaller gaps between them, making them appear more compact and saving screen space!
+
+fix the card of left and right its not near edge to edge of each card and the card image is not display fu;;
+Here's the updated CSS to fix the card display and make them edge-to-edge with proper image display:
+
+css
+/* globals.css - Complete CSS for 4-Player Uno Game with Edge-to-Edge Cards */
+
+*,
+*::after,
+*::before {
+    margin: 0;
+    padding: 0;
+    box-sizing: inherit;
+}
+
+html {
+    font-size: 62.5%;
+}
+
+body {
+    box-sizing: border-box;
+    background: linear-gradient(135deg, #1a472a 0%, #0d2818 100%);
+    min-height: 100vh;
+    width: 100%;
+    font-family: 'Avenir Next', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    color: #fff;
+    overflow-x: hidden;
+}
+
+/* Game Container */
+.game-container {
+    min-height: 100vh;
+    padding: 2rem;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    background: linear-gradient(135deg, #1a472a 0%, #0d2818 100%);
+}
+
+/* CPU Players Positioning */
+.cpu-player {
+    position: fixed;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    z-index: 10;
+    background: rgba(0, 0, 0, 0.2);
+    padding: 1rem;
+    border-radius: 2rem;
+    backdrop-filter: blur(5px);
+}
+
+.cpu-top {
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.cpu-left {
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.cpu-right {
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.cpu-info, .player-info {
+    background: rgba(0, 0, 0, 0.8);
+    padding: 0.5rem 1rem;
+    border-radius: 1rem;
+    text-align: center;
+    backdrop-filter: blur(5px);
+    border: 1px solid rgba(255, 215, 0, 0.3);
+}
+
+.cpu-name, .player-name {
+    font-size: 1.2rem;
+    font-weight: bold;
+    color: #ffd700;
+    letter-spacing: 1px;
+}
+
+.cpu-score, .player-score {
+    font-size: 1rem;
+    color: white;
+    margin-top: 0.2rem;
+}
+
+/* CPU Horizontal Hand (Top) */
+.cpu-hand {
+    display: flex;
+    justify-content: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    background: rgba(0, 0, 0, 0.3);
+    padding: 0.8rem;
+    border-radius: 1rem;
+    backdrop-filter: blur(5px);
+    max-width: 80vw;
+}
+
+/* CPU Vertical Hand (Left & Right) - EDGE TO EDGE */
+.cpu-hand-vertical {
+    display: flex;
+    flex-direction: column;
+    background: transparent;
+    padding: 0;
+    margin: 0;
+    max-height: 70vh;
+    overflow-y: auto;
+    overflow-x: visible;
+    gap: 0;
+}
+
+/* Hide scrollbar for cleaner look */
+.cpu-hand-vertical::-webkit-scrollbar {
+    width: 3px;
+}
+
+.cpu-hand-vertical::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 3px;
+}
+
+.cpu-hand-vertical::-webkit-scrollbar-thumb {
+    background: #ffd700;
+    border-radius: 3px;
+}
+
+/* Left CPU - Rotate cards to the right, edge to edge */
+.cpu-left .cpu-hand-vertical {
+    justify-content: flex-start;
+    align-items: flex-end;
+    gap: 0;
+}
+
+.cpu-left .cpu-hand-vertical .cpu-card-vertical {
+    transform: rotate(90deg);
+    transform-origin: center;
+    margin: 0;
+    padding: 0;
+    display: block;
+}
+
+/* Right CPU - Rotate cards to the left, edge to edge */
+.cpu-right .cpu-hand-vertical {
+    justify-content: flex-start;
+    align-items: flex-start;
+    gap: 0;
+}
+
+.cpu-right .cpu-hand-vertical .cpu-card-vertical {
+    transform: rotate(-90deg);
+    transform-origin: center;
+    margin: 0;
+    padding: 0;
+    display: block;
+}
+
+/* Card styling for left and right - FIXED IMAGE DISPLAY */
+.cpu-card-vertical {
+    width: 80px;
+    height: auto;
+    transition: all 0.2s ease;
+    border-radius: 0.6rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    display: block;
+    position: relative;
+}
+
+/* Ensure images inside cards are visible */
+.cpu-card-vertical img,
+.cpu-card img {
+    width: 100%;
+    height: auto;
+    display: block;
+    border-radius: 0.6rem;
+    object-fit: cover;
+}
+
+/* Fix for back card images */
+.cpu-card-vertical img,
+.cpu-card img {
+    background: #2a2a2a;
+}
+
+/* Hover effects for rotated cards */
+.cpu-left .cpu-card-vertical:hover,
+.cpu-right .cpu-card-vertical:hover {
+    transform: scale(1.05);
+    transition: all 0.2s ease;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+    z-index: 20;
+}
+
+.cpu-left .cpu-card-vertical:hover {
+    transform: rotate(90deg) scale(1.05);
+}
+
+.cpu-right .cpu-card-vertical:hover {
+    transform: rotate(-90deg) scale(1.05);
+}
+
+/* Adjust container width for edge-to-edge cards */
+.cpu-left,
+.cpu-right {
+    width: auto;
+    min-width: 90px;
+    padding: 0.5rem;
+}
+
+/* Remove background for cleaner look */
+.cpu-left .cpu-hand-vertical,
+.cpu-right .cpu-hand-vertical {
+    background: transparent;
+    backdrop-filter: none;
+}
+
+/* Center Area */
+.center-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1.5rem;
+    z-index: 5;
+    margin: 0 auto;
+    width: 100%;
+    max-width: 1200px;
+}
+
+/* Turn Indicator */
+.turn-indicator {
+    background: rgba(0, 0, 0, 0.85);
+    padding: 1rem 2rem;
+    border-radius: 5rem;
+    text-align: center;
+    animation: pulse 1.5s ease-in-out infinite;
+    box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 215, 0, 0.5);
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+        box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.3);
+    }
+    50% {
+        opacity: 0.9;
+        transform: scale(1.02);
+        box-shadow: 0 0.8rem 2rem rgba(0, 0, 0, 0.4);
+    }
+}
+
+.turn-text {
+    font-size: 1.6rem;
+    font-weight: bold;
+    letter-spacing: 2px;
+}
+
+.turn-player {
+    color: #4caf50;
+    text-shadow: 0 0 15px rgba(76, 175, 80, 0.6);
+}
+
+.turn-cpu {
+    color: #ff9800;
+    text-shadow: 0 0 15px rgba(255, 152, 0, 0.6);
+}
+
+/* Last Played Card */
+.last-played {
+    background: rgba(0, 0, 0, 0.75);
+    padding: 0.8rem 1.5rem;
+    border-radius: 1.5rem;
+    text-align: center;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 215, 0, 0.3);
+}
+
+.last-played p {
+    font-size: 1.2rem;
+    margin-bottom: 0.3rem;
+    color: #ffd700;
+}
+
+.last-played-card {
+    font-size: 1.3rem;
+    font-weight: bold;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+/* Table Cards */
+.table-cards {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 3rem;
+    margin: 1.5rem 0;
+}
+
+.play-pile, .draw-pile {
+    background: rgba(0, 0, 0, 0.4);
+    padding: 1rem;
+    border-radius: 1rem;
+    transition: transform 0.2s ease;
+    backdrop-filter: blur(5px);
+}
+
+.play-pile {
+    cursor: default;
+}
+
+.draw-pile {
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.draw-pile:hover {
+    transform: scale(1.05);
+    background: rgba(0, 0, 0, 0.6);
+}
+
+.draw-text {
+    text-align: center;
+    margin-top: 0.5rem;
+    font-size: 1.1rem;
+    font-weight: bold;
+    color: #ffd700;
+}
+
+/* Scores Container */
+.scores {
+    display: flex;
+    justify-content: center;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+    margin-top: 1.5rem;
+    padding: 0.8rem;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 2rem;
+    backdrop-filter: blur(5px);
+}
+
+.score-card {
+    background: rgba(0, 0, 0, 0.7);
+    padding: 0.5rem 1rem;
+    border-radius: 1rem;
+    display: flex;
+    gap: 0.8rem;
+    transition: all 0.3s ease;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    min-width: 100px;
+    justify-content: space-between;
+}
+
+.score-card.active-turn {
+    background: rgba(76, 175, 80, 0.3);
+    border: 2px solid #4caf50;
+    transform: scale(1.05);
+    box-shadow: 0 0 15px rgba(76, 175, 80, 0.3);
+}
+
+.score-name {
+    font-weight: bold;
+    color: #ffd700;
+    font-size: 1.1rem;
+}
+
+.score-value {
+    color: white;
+    font-weight: bold;
+    font-size: 1.1rem;
+}
+
+/* Player Bottom */
+.player-bottom {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.8rem;
+    z-index: 10;
+    background: rgba(0, 0, 0, 0.2);
+    padding: 0.8rem;
+    border-radius: 2rem;
+    backdrop-filter: blur(5px);
+}
+
+.player-hand {
+    display: flex;
+    justify-content: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    background: rgba(0, 0, 0, 0.3);
+    padding: 0.8rem;
+    border-radius: 1rem;
+    backdrop-filter: blur(5px);
+    max-width: 90vw;
+}
+
+.player-card {
+    cursor: pointer;
+    transition: all 0.2s ease;
+    width: 70px;
+    height: auto;
+    border-radius: 0.6rem;
+    box-shadow: 0 0.4rem 0.8rem rgba(0, 0, 0, 0.3);
+}
+
+.player-card:hover {
+    transform: translateY(-0.8rem) scale(1.05);
+    box-shadow: 0 1rem 2rem rgba(0, 0, 0, 0.4);
+}
+
+/* Player UNO Animation */
+.player-animation {
+    position: absolute;
+    bottom: -40px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
+    pointer-events: none;
+    animation: unoFloat 0.5s ease-in-out 3;
+}
+
+/* CPU Animations */
+.cpu-animation-top,
+.cpu-animation-left,
+.cpu-animation-right {
+    position: absolute;
+    z-index: 20;
+    pointer-events: none;
+    animation: unoFloat 0.5s ease-in-out 3;
+}
+
+.cpu-animation-top {
+    top: -40px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.cpu-animation-left {
+    left: -60px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.cpu-animation-right {
+    right: -60px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+/* Adjust UNO animation for rotated CPUs */
+.cpu-left .cpu-animation-left {
+    left: -50px;
+    transform: translateY(-50%) rotate(90deg);
+}
+
+.cpu-right .cpu-animation-right {
+    right: -50px;
+    transform: translateY(-50%) rotate(-90deg);
+}
+
+@keyframes unoFloat {
+    0%, 100% {
+        opacity: 1;
+        transform: translateX(-50%) scale(1);
+    }
+    50% {
+        opacity: 0.8;
+        transform: translateX(-50%) scale(1.2);
+    }
+}
+
+/* Wild Card Effects */
+@keyframes colorChange {
+    0% {
+        filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.5));
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.05);
+    }
+    100% {
+        filter: drop-shadow(0 0 20px rgba(255, 255, 255, 0.8));
+        transform: scale(1);
+    }
+}
+
+@keyframes glowPulse {
+    0%, 100% {
+        opacity: 0.3;
+        transform: scale(0.98);
+    }
+    50% {
+        opacity: 0.7;
+        transform: scale(1.02);
+    }
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* Modals */
+.end-of-round,
+.end-of-game {
+    position: fixed;
+    z-index: 100;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    padding: 2rem 3rem;
+    border-radius: 2rem;
+    text-align: center;
+    box-shadow: 0 2rem 4rem rgba(0, 0, 0, 0.5);
+    border: 2px solid #ffd700;
+    animation: modalPop 0.3s ease-out;
+    backdrop-filter: blur(10px);
+}
+
+.end-of-round {
+    min-width: 300px;
+}
+
+.end-of-game {
+    min-width: 350px;
+}
+
+@keyframes modalPop {
+    0% {
+        transform: translate(-50%, -50%) scale(0.8);
+        opacity: 0;
+    }
+    100% {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: 1;
+    }
+}
+
+.end-of-round p,
+.end-of-game p {
+    color: #ffd700;
+    font-size: 1.8rem;
+    margin-bottom: 1rem;
+    font-weight: bold;
+}
+
+.end-of-game button {
+    background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+    color: white;
+    padding: 0.8rem 2rem;
+    font-size: 1.4rem;
+    border: none;
+    border-radius: 1rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-weight: bold;
+    margin-top: 0.8rem;
+}
+
+.end-of-game button:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.3);
+}
+
+/* Color Picker */
+.color-picker {
+    position: fixed;
+    z-index: 101;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    padding: 2rem;
+    border-radius: 2rem;
+    text-align: center;
+    border: 2px solid #ffd700;
+    animation: modalPop 0.3s ease-out;
+    min-width: 300px;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 2rem 4rem rgba(0, 0, 0, 0.5);
+}
+
+.color-picker p {
+    color: #ffd700;
+    font-size: 1.6rem;
+    margin-bottom: 1.5rem;
+    font-weight: bold;
+}
+
+.color-picker > div {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.color-picker button {
+    padding: 0.8rem 1.5rem;
+    font-size: 1.4rem;
+    border: none;
+    border-radius: 1rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-weight: bold;
+    position: relative;
+    overflow: hidden;
+}
+
+.color-picker button::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.3);
+    transform: translate(-50%, -50%);
+    transition: width 0.3s, height 0.3s;
+}
+
+.color-picker button:hover::before {
+    width: 100%;
+    height: 100%;
+}
+
+.color-picker button:hover {
+    transform: scale(1.05);
+}
+
+.red {
+    background: linear-gradient(135deg, #ff4444 0%, #cc0000 100%);
+    color: white;
+}
+
+.green {
+    background: linear-gradient(135deg, #4caf50 0%, #2e7d32 100%);
+    color: white;
+}
+
+.blue {
+    background: linear-gradient(135deg, #2196f3 0%, #0d47a1 100%);
+    color: white;
+}
+
+.yellow {
+    background: linear-gradient(135deg, #ffeb3b 0%, #f9a825 100%);
+    color: #333;
+}
+
+/* Responsive Design */
+@media (max-width: 1200px) {
+    .cpu-left, .cpu-right {
+        transform: translateY(-50%) scale(0.95);
+    }
+    
+    .cpu-left {
+        left: 5px;
+    }
+    
+    .cpu-right {
+        right: 5px;
+    }
+    
+    .cpu-card-vertical {
+        width: 65px;
+    }
+}
+
+@media (max-width: 968px) {
+    html {
+        font-size: 55%;
+    }
+    
+    .cpu-left, .cpu-right {
+        display: none;
+    }
+    
+    .cpu-top {
+        position: relative;
+        top: 0;
+        left: 0;
+        transform: none;
+        margin-bottom: 1rem;
+    }
+    
+    .player-bottom {
+        position: relative;
+        bottom: 0;
+        left: 0;
+        transform: none;
+        margin-top: 1rem;
+    }
+    
+    .game-container {
+        padding: 1rem;
+    }
+    
+    .center-area {
+        margin: 0.5rem auto;
+    }
+    
+    .cpu-hand {
+        max-width: 95vw;
+    }
+    
+    .player-hand {
+        max-width: 95vw;
+    }
+    
+    .table-cards {
+        gap: 1.5rem;
+    }
+    
+    .scores {
+        gap: 0.8rem;
+    }
+    
+    .score-card {
+        min-width: 80px;
+        padding: 0.4rem 0.8rem;
+    }
+}
+
+@media (max-width: 768px) {
+    html {
+        font-size: 50%;
+    }
+    
+    .cpu-card {
+        width: 45px;
+    }
+    
+    .player-card {
+        width: 55px;
+    }
+    
+    .play-pile img, 
+    .draw-pile img {
+        width: 70px;
+        height: auto;
+    }
+    
+    .turn-text {
+        font-size: 1.2rem;
+    }
+    
+    .turn-indicator {
+        padding: 0.6rem 1.2rem;
+    }
+    
+    .last-played-card {
+        font-size: 1rem;
+    }
+    
+    .score-name, .score-value {
+        font-size: 0.9rem;
+    }
+    
+    .color-picker {
+        min-width: 250px;
+        padding: 1.2rem;
+    }
+    
+    .color-picker button {
+        padding: 0.5rem 1rem;
+        font-size: 1.1rem;
+    }
+    
+    .end-of-round, .end-of-game {
+        min-width: 250px;
+        padding: 1.2rem;
+    }
+    
+    .end-of-round p, .end-of-game p {
+        font-size: 1.2rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .cpu-card {
+        width: 35px;
+    }
+    
+    .player-card {
+        width: 45px;
+    }
+    
+    .play-pile img, 
+    .draw-pile img {
+        width: 55px;
+        height: auto;
+    }
+    
+    .turn-text {
+        font-size: 1rem;
+    }
+    
+    .scores {
+        gap: 0.5rem;
+    }
+    
+    .score-card {
+        min-width: 60px;
+        padding: 0.2rem 0.5rem;
+    }
+    
+    .score-name, .score-value {
+        font-size: 0.7rem;
+    }
+    
+    .draw-text {
+        font-size: 0.8rem;
+    }
+    
+    .last-played p {
+        font-size: 0.9rem;
+    }
+    
+    .last-played-card {
+        font-size: 0.9rem;
+    }
+}
+
+/* Landscape mode adjustments */
+@media (max-height: 600px) and (orientation: landscape) {
+    .cpu-left, .cpu-right {
+        display: none;
+    }
+    
+    .cpu-top {
+        position: relative;
+        top: 0;
+        transform: none;
+        margin-bottom: 0.5rem;
+    }
+    
+    .player-bottom {
+        position: relative;
+        bottom: 0;
+        transform: none;
+        margin-top: 0.5rem;
+    }
+    
+    .cpu-hand {
+        max-height: 70px;
+        overflow-y: auto;
+    }
+    
+    .player-hand {
+        max-height: 70px;
+        overflow-y: auto;
+    }
+    
+    .center-area {
+        gap: 0.8rem;
+    }
+    
+    .table-cards {
+        margin: 0.3rem 0;
+    }
+}
+
+/* Loading state */
+.loading {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    font-size: 2rem;
+    color: #ffd700;
+    background: linear-gradient(135deg, #1a472a 0%, #0d2818 100%);
+}
+
+/* Utility classes */
+.hidden {
+    display: none;
+}
+
+.text-center {
+    text-align: center;
+}
+
+/* Fix for Next.js Image component */
+span img {
+    border-radius: 0.6rem !important;
+}
+
+/* Ensure card images are visible on all devices */
+.cpu-card-vertical span,
+.cpu-card span,
+.player-card span {
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+}
