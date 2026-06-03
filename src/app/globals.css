@@ -1,4 +1,4 @@
-/* globals.css - Complete CSS for 4-Player Uno Game with Proper Rotated Card Sizing */
+/* globals.css - Complete CSS with NO GAPS for rotated cards */
 
 *,
 *::after,
@@ -109,6 +109,16 @@ body {
     max-height: 70vh;
     overflow-y: auto;
     overflow-x: visible;
+    gap: 0;
+    line-height: 0;
+}
+
+/* Card wrapper for left and right - eliminates gaps */
+.cpu-card-wrapper {
+    display: block;
+    margin: 0;
+    padding: 0;
+    line-height: 0;
 }
 
 /* Hide scrollbar for cleaner look */
@@ -132,12 +142,14 @@ body {
     align-items: flex-end;
 }
 
-.cpu-left .cpu-hand-vertical .cpu-card-vertical {
+.cpu-left .cpu-card-vertical {
     transform: rotate(90deg);
     transform-origin: center;
     margin: -2px 0;
     padding: 0;
     display: block;
+    width: 60px !important;
+    height: 90px !important;
 }
 
 /* Right CPU - Rotate cards to the left, NO GAPS */
@@ -146,34 +158,23 @@ body {
     align-items: flex-start;
 }
 
-.cpu-right .cpu-hand-vertical .cpu-card-vertical {
+.cpu-right .cpu-card-vertical {
     transform: rotate(-90deg);
     transform-origin: center;
     margin: -2px 0;
     padding: 0;
     display: block;
-}
-
-/* Card styling for left and right - FIXED DIMENSIONS FOR ROTATION */
-.cpu-card-vertical {
-    width: 70px;
-    height: auto;
-    transition: all 0.2s ease;
-    border-radius: 0.6rem;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-    display: block;
-    position: relative;
-}
-
-/* When rotated, the width becomes height and height becomes width */
-/* So we set appropriate dimensions to eliminate gaps */
-.cpu-left .cpu-card-vertical,
-.cpu-right .cpu-card-vertical {
-    width: 70px;
-    height: auto;
+    width: 60px !important;
+    height: 90px !important;
 }
 
 /* Ensure images fill the card completely */
+.cpu-card-vertical {
+    display: block !important;
+    border-radius: 0.6rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
 .cpu-card-vertical span {
     display: block !important;
     line-height: 0 !important;
@@ -181,7 +182,7 @@ body {
 
 .cpu-card-vertical img {
     width: 100% !important;
-    height: auto !important;
+    height: 100% !important;
     display: block !important;
     border-radius: 0.6rem;
     object-fit: cover;
@@ -191,7 +192,7 @@ body {
 .cpu-left,
 .cpu-right {
     width: auto;
-    min-width: 80px;
+    min-width: 70px;
     padding: 0.5rem;
 }
 
@@ -203,10 +204,22 @@ body {
 }
 
 /* Make cards stack perfectly without gaps */
-.cpu-left .cpu-hand-vertical .cpu-card-vertical,
-.cpu-right .cpu-hand-vertical .cpu-card-vertical {
-    margin-top: -3px;
-    margin-bottom: -3px;
+.cpu-left .cpu-card-wrapper,
+.cpu-right .cpu-card-wrapper {
+    margin: -3px 0;
+    padding: 0;
+    line-height: 0;
+    display: block;
+}
+
+.cpu-left .cpu-card-wrapper:first-child,
+.cpu-right .cpu-card-wrapper:first-child {
+    margin-top: 0;
+}
+
+.cpu-left .cpu-card-wrapper:last-child,
+.cpu-right .cpu-card-wrapper:last-child {
+    margin-bottom: 0;
 }
 
 /* Hover effects for rotated cards */
@@ -694,13 +707,10 @@ body {
         right: 5px;
     }
     
-    .cpu-card-vertical {
-        width: 60px;
-    }
-    
     .cpu-left .cpu-card-vertical,
     .cpu-right .cpu-card-vertical {
-        width: 60px;
+        width: 50px !important;
+        height: 75px !important;
     }
 }
 
@@ -929,36 +939,38 @@ span img {
 .player-card span {
     display: block !important;
     width: 100% !important;
-    height: auto !important;
+    height: 100% !important;
     line-height: 0 !important;
 }
 
-/* Critical fix for rotated cards - eliminate gaps */
+/* Critical fix for rotated cards - eliminate ALL gaps */
 .cpu-left .cpu-hand-vertical,
 .cpu-right .cpu-hand-vertical {
     line-height: 0;
+    font-size: 0;
+}
+
+.cpu-left .cpu-card-wrapper,
+.cpu-right .cpu-card-wrapper {
+    margin: -4px 0;
+    padding: 0;
+    line-height: 0;
+    font-size: 0;
+    display: block;
+}
+
+.cpu-left .cpu-card-wrapper:first-child,
+.cpu-right .cpu-card-wrapper:first-child {
+    margin-top: 0;
+}
+
+.cpu-left .cpu-card-wrapper:last-child,
+.cpu-right .cpu-card-wrapper:last-child {
+    margin-bottom: 0;
 }
 
 .cpu-left .cpu-card-vertical,
 .cpu-right .cpu-card-vertical {
-    display: block;
     margin: 0;
     padding: 0;
-    border: none;
-}
-
-/* Ensure cards touch each other vertically */
-.cpu-left .cpu-hand-vertical > div,
-.cpu-right .cpu-hand-vertical > div {
-    margin: -2px 0;
-}
-
-.cpu-left .cpu-hand-vertical > div:first-child,
-.cpu-right .cpu-hand-vertical > div:first-child {
-    margin-top: 0;
-}
-
-.cpu-left .cpu-hand-vertical > div:last-child,
-.cpu-right .cpu-hand-vertical > div:last-child {
-    margin-bottom: 0;
 }
