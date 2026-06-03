@@ -147,6 +147,7 @@ export default function UnoGame() {
     const [gameWinner,      setGameWinner]      = useState<'player' | 'cpu' | null>(null)
     const [cpuVisible,      setCpuVisible]      = useState(false)
     const [wildCardColor,   setWildCardColor]   = useState<string>('') // For wild card visual effect
+    const [selectedWildColor, setSelectedWildColor] = useState<string>('') // Store the selected wild card color
     // #endregion
 
     // #region REFS
@@ -160,6 +161,7 @@ export default function UnoGame() {
     const cpuScoreRef      = useRef(cpuScore)
     const playerScoreRef   = useRef(playerScore)
     const wildCardColorRef = useRef(wildCardColor)
+    const selectedWildColorRef = useRef(selectedWildColor)
 
     useEffect(() => { playerTurnRef.current  = playerTurn    }, [playerTurn])
     useEffect(() => { gameOnRef.current      = gameOn        }, [gameOn])
@@ -171,6 +173,7 @@ export default function UnoGame() {
     useEffect(() => { cpuScoreRef.current    = cpuScore      }, [cpuScore])
     useEffect(() => { playerScoreRef.current = playerScore   }, [playerScore])
     useEffect(() => { wildCardColorRef.current = wildCardColor }, [wildCardColor])
+    useEffect(() => { selectedWildColorRef.current = selectedWildColor }, [selectedWildColor])
     // #endregion
 
     // #region AUDIO INIT
@@ -228,6 +231,7 @@ export default function UnoGame() {
         setColorPickerOpen(false)
         colorPickerRef.current = false
         setWildCardColor('') // Reset wild card color on new hand
+        setSelectedWildColor('') // Reset selected color
 
         let newDeck = createDeck()
         newDeck = shuffleDeck(newDeck)
@@ -410,7 +414,9 @@ export default function UnoGame() {
                 newPlayPile[newPlayPile.length - 1].color = pickedColor
                 // Keep the wild card color effect until a new card is played
                 setWildCardColor(pickedColor)
+                setSelectedWildColor(pickedColor)
                 wildCardColorRef.current = pickedColor
+                selectedWildColorRef.current = pickedColor
             }
 
             setPlayPile(newPlayPile)
@@ -493,10 +499,12 @@ export default function UnoGame() {
         setPlayPile(newPlayPile)
         playPileRef.current = newPlayPile
 
-        // Reset wild card color when a new card is played (unless the new card is also a wild card)
+        // Reset wild card colors when a new card is played (unless the new card is also a wild card)
         if (playedCard.color !== 'any') {
             setWildCardColor('')
+            setSelectedWildColor('')
             wildCardColorRef.current = ''
+            selectedWildColorRef.current = ''
         }
 
         if (newPlayerHand.length === 1) triggerUno('player')
@@ -591,7 +599,9 @@ export default function UnoGame() {
         
         // Set the wild card color - this will persist until a new card is played
         setWildCardColor(color)
+        setSelectedWildColor(color)
         wildCardColorRef.current = color
+        selectedWildColorRef.current = color
         
         // Create a temporary flash effect on the play area
         const playArea = document.querySelector('.play-area') as HTMLElement
@@ -633,6 +643,7 @@ export default function UnoGame() {
         playerScoreRef.current = 0
         cpuScoreRef.current    = 0
         setWildCardColor('')
+        setSelectedWildColor('')
         newHand()
     }, [newHand])
     // #endregion
@@ -729,10 +740,10 @@ export default function UnoGame() {
         return `${colorNames[card.color] || card.color} ${value}`
     }
 
-    // Helper to get wild card CSS class
+    // Helper to get wild card CSS class - uses selectedWildColor for persistent effect
     const getWildCardClass = (card: CardType) => {
-        // Use the stored wildCardColor state for persistent color effect
-        const activeColor = wildCardColor
+        // Use the stored selectedWildColor for persistent color effect
+        const activeColor = selectedWildColor
         
         if (card.color !== 'any' || !activeColor) return ''
         
@@ -789,6 +800,26 @@ export default function UnoGame() {
                                 {topCard.playedByPlayer ? '👤 Player played: ' : '🤖 CPU played: '}
                                 {getCardName(topCard)}
                                 {topCard.drawValue > 0 && ` (+${topCard.drawValue})`}
+                                {selectedWildColor && topCard.color === 'any' && (
+                                    <span style={{ 
+                                        display: 'inline-block', 
+                                        marginLeft: '8px', 
+                                        padding: '2px 8px', 
+                                        borderRadius: '12px', 
+                                        fontSize: '11px',
+                                        fontWeight: 'bold',
+                                        backgroundColor: selectedWildColor === 'rgb(255, 6, 0)' ? '#ff4444' :
+                                                       selectedWildColor === 'rgb(0, 170, 69)' ? '#4caf50' :
+                                                       selectedWildColor === 'rgb(0, 150, 224)' ? '#2196f3' :
+                                                       '#ffeb3b',
+                                        color: selectedWildColor === 'rgb(255, 222, 0)' ? '#333' : 'white'
+                                    }}>
+                                        {selectedWildColor === 'rgb(255, 6, 0)' ? '🔴 RED' :
+                                         selectedWildColor === 'rgb(0, 170, 69)' ? '🟢 GREEN' :
+                                         selectedWildColor === 'rgb(0, 150, 224)' ? '🔵 BLUE' :
+                                         '🟡 YELLOW'}
+                                    </span>
+                                )}
                             </>
                         )}
                     </p>
@@ -819,7 +850,7 @@ export default function UnoGame() {
                 {/* PLAY PILE */}
                 <div className='play-pile'>
                     {topCard && (
-                        <div className={`${topCard.color === 'any' && topCard.drawValue === 0 ? 'wild-card-glow' : ''}`}>
+                        <div className={`${topCard.color === 'any' && topCard.drawValue === 0 && selectedWildColor ? 'wild-card-glow' : ''}`}>
                             <Image
                                 src={topCard.src}
                                 alt='play pile'
@@ -905,7 +936,7 @@ export default function UnoGame() {
                             className='red' 
                             onClick={() => handleColorChosen('rgb(255, 6, 0)', 'red')}
                             onMouseEnter={() => setWildCardColor('rgb(255, 6, 0)')}
-                            onMouseLeave={() => setWildCardColor(wildCardColorRef.current)}
+                            onMouseLeave={() => setWildCardColor(selectedWildColorRef.current)}
                         >
                             🔴 RED
                         </button>
@@ -913,7 +944,7 @@ export default function UnoGame() {
                             className='green' 
                             onClick={() => handleColorChosen('rgb(0, 170, 69)', 'green')}
                             onMouseEnter={() => setWildCardColor('rgb(0, 170, 69)')}
-                            onMouseLeave={() => setWildCardColor(wildCardColorRef.current)}
+                            onMouseLeave={() => setWildCardColor(selectedWildColorRef.current)}
                         >
                             🟢 GREEN
                         </button>
@@ -921,7 +952,7 @@ export default function UnoGame() {
                             className='blue' 
                             onClick={() => handleColorChosen('rgb(0, 150, 224)', 'blue')}
                             onMouseEnter={() => setWildCardColor('rgb(0, 150, 224)')}
-                            onMouseLeave={() => setWildCardColor(wildCardColorRef.current)}
+                            onMouseLeave={() => setWildCardColor(selectedWildColorRef.current)}
                         >
                             🔵 BLUE
                         </button>
@@ -929,7 +960,7 @@ export default function UnoGame() {
                             className='yellow' 
                             onClick={() => handleColorChosen('rgb(255, 222, 0)', 'yellow')}
                             onMouseEnter={() => setWildCardColor('rgb(255, 222, 0)')}
-                            onMouseLeave={() => setWildCardColor(wildCardColorRef.current)}
+                            onMouseLeave={() => setWildCardColor(selectedWildColorRef.current)}
                         >
                             🟡 YELLOW
                         </button>
