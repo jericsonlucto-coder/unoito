@@ -7,7 +7,8 @@ import Pusher from 'pusher-js'
 // #region PUSHER CONFIG
 const PUSHER_CONFIG = {
     key: "4de6e91a5e72dd9096db",
-    cluster: "ap1"
+    cluster: "ap1",
+    authEndpoint: "/api/pusher-auth"
 }
 
 // #endregion
@@ -46,7 +47,7 @@ interface GameState {
 }
 
 interface GameEvent {
-    type: 'PLAY_CARD' | 'DRAW_CARD' | 'COLOR_CHOSEN' | 'UNO' | 'PLAYER_READY' | 'PLAYER_JOINED' | 'PLAYER_LEFT' | 'START_GAME' | 'SYNC_STATE' | 'ROOM_CREATED' | 'REQUEST_ROOM' | 'ROOM_RESPONSE'
+    type: 'PLAY_CARD' | 'DRAW_CARD' | 'COLOR_CHOSEN' | 'UNO' | 'PLAYER_JOINED' | 'PLAYER_LEFT' | 'START_GAME' | 'SYNC_STATE' | 'PLAYER_READY'
     playerId: string
     playerName?: string
     roomId?: string
@@ -168,16 +169,6 @@ class AudioManager {
 const audioManager = new AudioManager()
 // #endregion
 
-// Global rooms storage
-let globalRooms: Map<string, RoomData> = new Map()
-
-interface RoomData {
-    players: Player[]
-    gameState: GameState | null
-    createdAt: number
-    hostId: string
-}
-
 export default function UnoGame() {
 
     // #region STATE
@@ -195,10 +186,9 @@ export default function UnoGame() {
     const [colorPickerOpen, setColorPickerOpen] = useState(false)
     const [selectedWildColor, setSelectedWildColor] = useState<string>('')
     const [messages, setMessages] = useState<string[]>([])
-    const [pusherChannel, setPusherChannel] = useState<any>(null)
-    const [pusherConnection, setPusherConnection] = useState<any>(null)
+    const [pusher, setPusher] = useState<Pusher | null>(null)
+    const [roomChannel, setRoomChannel] = useState<any>(null)
     const [isHost, setIsHost] = useState(false)
-    const [globalChannel, setGlobalChannel] = useState<any>(null)
     // #endregion
 
     // #region REFS
@@ -472,50 +462,40 @@ export default function UnoGame() {
     // #endregion
 
     // #region MULTIPLAYER FUNCTIONS
-    const initGlobalChannel = () => {
-        if (globalChannel) return globalChannel
+    const initPusher = () => {
+        if (pusher) return pusher
         
-        console.log('🌍 Initializing global Pusher for room discovery...')
-        const pusher = new Pusher(PUSHER_CONFIG.key, {
+        const newPusher = new Pusher(PUSHER_CONFIG.key, {
             cluster: PUSHER_CONFIG.cluster,
-            enableStats: true
+            authEndpoint: PUSHER_CONFIG.authEndpoint,
+            auth: {
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+            },
         })
         
-        const channel = pusher.subscribe('uno-global')
-        
-        channel.bind('pusher:subscription_succeeded', () => {
-            console.log('✅ Subscribed to global channel for room discovery')
-        })
-        
-        channel.bind('client-room-created', (data: { roomId: string, roomData: RoomData }) => {
-            console.log('📢 New room announced globally:', data.roomId)
-            globalRooms.set(data.roomId, data.roomData)
-        })
-        
-        channel.bind('client-room-request', (data: { roomId: string, requesterId: string }) => {
-            console.log('📢 Room request received for:', data.roomId)
-            const room = globalRooms.get(data.roomId)
-            if (room) {
-                channel.trigger('client-room-response', {
-                    roomId: data.roomId,
-                    requesterId: data.requesterId,
-                    roomData: room
-                })
-                console.log('📤 Sent room response for:', data.roomId)
+        newPusher.connection.bind('state_change', (states: any) => {
+            console.log('📡 Pusher connection state:', states.current)
+            if (states.current === 'connected') {
+                addMessage('Connected to game server!')
             }
         })
         
-        setGlobalChannel(channel)
-        return channel
+        newPusher.connection.bind('error', (err: any) => {
+            console.error('❌ Pusher connection error:', err)
+            addMessage('Failed to connect to game server!')
+        })
+        
+        setPusher(newPusher)
+        return newPusher
     }
 
-    const createMultiplayerRoom = () => {
+    const createMultiplayerRoom = async () => {
         console.log('🏠 Creating multiplayer room...')
         const newRoomId = generateRoomId()
         const newPlayerId = generatePlayerId()
         const newPlayerName = playerName.trim() || `Player_${newPlayerId.slice(-4)}`
-        
-        console.log('📝 Room details:', { roomId: newRoomId, playerId: newPlayerId, playerName: newPlayerName })
         
         setPlayerId(newPlayerId)
         setRoomId(newRoomId)
@@ -531,64 +511,57 @@ export default function UnoGame() {
             isOnline: true
         }
         
-        const roomData: RoomData = {
-            players: [newPlayer],
-            gameState: null,
-            createdAt: Date.now(),
-            hostId: newPlayerId
-        }
+        const pusherInstance = initPusher()
         
-        globalRooms.set(newRoomId, roomData)
+        // Subscribe to presence channel for the room
+        const channel = pusherInstance.subscribe(`presence-game-${newRoomId}`)
+        setRoomChannel(channel)
         
-        // Announce room globally
-        const channel = initGlobalChannel()
-        setTimeout(() => {
-            channel.trigger('client-room-created', {
-                roomId: newRoomId,
-                roomData: roomData
-            })
-            console.log('📢 Announced room globally:', newRoomId)
-        }, 1000)
-        
-        // Initialize room-specific Pusher
-        console.log('🔌 Initializing Pusher connection for host...')
-        const pusher = new Pusher(PUSHER_CONFIG.key, {
-            cluster: PUSHER_CONFIG.cluster,
-            enableStats: true
+        channel.bind('pusher:subscription_succeeded', () => {
+            console.log(`✅ Subscribed to presence channel: game-${newRoomId}`)
+            
+            // Set channel members
+            const members = (channel as any).members
+            if (members) {
+                console.log('👥 Current members:', members.count)
+            }
         })
         
-        setPusherConnection(pusher)
-        
-        pusher.connection.bind('state_change', (states: any) => {
-            console.log('📡 Pusher connection state:', states.current)
+        channel.bind('pusher:member_added', (member: any) => {
+            console.log('👋 Member added:', member)
+            addMessage(`Player ${member.info?.name || 'Someone'} joined the room`)
+            
+            // Request current players list from host
+            if (!isHost && member.id !== newPlayerId) {
+                channel.trigger('client-get-players', { requesterId: newPlayerId })
+            }
         })
         
-        pusher.connection.bind('connected', () => {
-            console.log('✅ Pusher connected successfully!')
-            addMessage('Connected to game server!')
+        channel.bind('pusher:member_removed', (member: any) => {
+            console.log('👋 Member removed:', member)
+            addMessage(`Player left the room`)
         })
         
-        pusher.connection.bind('error', (err: any) => {
-            console.error('❌ Pusher connection error:', err)
-            addMessage('Failed to connect to game server!')
+        channel.bind('client-players-update', (data: { players: Player[], hostId: string }) => {
+            console.log('📋 Received players update:', data.players)
+            setPlayers(data.players)
+            if (data.hostId === newPlayerId) {
+                setIsHost(true)
+            }
         })
         
-        const roomChannel = pusher.subscribe(`game-${newRoomId}`)
-        setPusherChannel(roomChannel)
-        
-        roomChannel.bind('pusher:subscription_succeeded', () => {
-            console.log(`✅ Subscribed to channel: game-${newRoomId}`)
-            addMessage(`Room ${newRoomId} created! Waiting for players...`)
+        channel.bind('client-get-players', (data: { requesterId: string }) => {
+            if (isHost) {
+                channel.trigger('client-players-update', {
+                    players: [newPlayer],
+                    hostId: newPlayerId
+                })
+            }
         })
         
-        roomChannel.bind('pusher:subscription_error', (error: any) => {
-            console.error('❌ Subscription error:', error)
-            addMessage('Failed to subscribe to room channel!')
-        })
-        
-        roomChannel.bind('client-game-event', (data: GameEvent) => {
-            console.log('📨 Host received game event:', data)
-            handleGameEvent(data)
+        channel.bind('client-game-event', (event: GameEvent) => {
+            console.log('📨 Received game event:', event)
+            handleGameEvent(event)
         })
         
         setPlayers([newPlayer])
@@ -597,176 +570,104 @@ export default function UnoGame() {
         addMessage(`Share this code with friends to join!`)
     }
 
-    const joinMultiplayerRoom = () => {
+    const joinMultiplayerRoom = async () => {
         const inputRoomId = roomId.trim().toUpperCase()
         
         console.log('🔍 Attempting to join room:', inputRoomId)
         
         if (!inputRoomId) {
-            console.log('❌ No room code entered')
             addMessage('Please enter a room code!')
-            return
-        }
-        
-        // Check if room exists in memory
-        let room = globalRooms.get(inputRoomId)
-        
-        if (!room) {
-            // Request room from global channel
-            console.log('📤 Requesting room info from global channel...')
-            const channel = initGlobalChannel()
-            
-            // Listen for response
-            const responseHandler = (data: { roomId: string, requesterId: string, roomData: RoomData }) => {
-                if (data.roomId === inputRoomId) {
-                    console.log('📥 Received room response:', data.roomData)
-                    globalRooms.set(inputRoomId, data.roomData)
-                    channel.unbind('client-room-response', responseHandler)
-                    proceedToJoin(data.roomData, inputRoomId)
-                }
-            }
-            
-            channel.bind('client-room-response', responseHandler)
-            
-            channel.trigger('client-room-request', {
-                roomId: inputRoomId,
-                requesterId: 'joiner'
-            })
-            
-            addMessage('Looking for room... Please wait.')
-            
-            // Timeout after 5 seconds
-            setTimeout(() => {
-                channel.unbind('client-room-response', responseHandler)
-                if (!globalRooms.get(inputRoomId)) {
-                    addMessage(`Room "${inputRoomId}" not found! Please check the room code.`)
-                }
-            }, 5000)
-            return
-        }
-        
-        proceedToJoin(room, inputRoomId)
-    }
-    
-    const proceedToJoin = (room: RoomData, inputRoomId: string) => {
-        if (room.players.length >= 4) {
-            console.log('❌ Room is full')
-            addMessage('Room is full!')
             return
         }
         
         const newPlayerId = generatePlayerId()
         const newPlayerName = playerName.trim() || `Player_${newPlayerId.slice(-4)}`
         
-        console.log('👤 New player joining:', { playerId: newPlayerId, playerName: newPlayerName })
-        
         setPlayerId(newPlayerId)
         setIsHost(false)
         
-        const positions = ['right', 'top', 'left'] as const
-        const position = positions[room.players.length - 1] || 'right'
+        const pusherInstance = initPusher()
         
-        const newPlayer: Player = {
-            id: newPlayerId,
-            name: newPlayerName,
-            hand: [],
-            score: 0,
-            position: position,
-            isReady: true,
-            isOnline: true
-        }
+        // Subscribe to presence channel for the room
+        const channel = pusherInstance.subscribe(`presence-game-${inputRoomId}`)
+        setRoomChannel(channel)
         
-        room.players.push(newPlayer)
-        globalRooms.set(inputRoomId, room)
-        
-        // Announce room update
-        const channel = initGlobalChannel()
-        channel.trigger('client-room-created', {
-            roomId: inputRoomId,
-            roomData: room
-        })
-        
-        // Initialize Pusher for this room
-        console.log('🔌 Initializing Pusher connection for joiner...')
-        const pusher = new Pusher(PUSHER_CONFIG.key, {
-            cluster: PUSHER_CONFIG.cluster,
-            enableStats: true
-        })
-        
-        setPusherConnection(pusher)
-        
-        pusher.connection.bind('connected', () => {
-            console.log('✅ Joiner Pusher connected successfully!')
-            addMessage('Connected to game server!')
+        channel.bind('pusher:subscription_succeeded', () => {
+            console.log(`✅ Subscribed to presence channel: game-${inputRoomId}`)
             
-            setTimeout(() => {
-                console.log('📤 Sending PLAYER_JOINED event to host...')
-                roomChannel.trigger('client-game-event', {
-                    type: 'PLAYER_JOINED',
-                    playerId: newPlayerId,
-                    playerName: newPlayerName,
-                    data: { players: room.players }
+            // Notify host about new player
+            const memberInfo = { id: newPlayerId, name: newPlayerName }
+            channel.trigger('client-player-joined', memberInfo)
+            
+            setRoomId(inputRoomId)
+            setGameMode('waiting')
+            addMessage(`Joined room: ${inputRoomId}`)
+        })
+        
+        channel.bind('pusher:subscription_error', (error: any) => {
+            console.error('❌ Failed to join room:', error)
+            addMessage(`Room "${inputRoomId}" not found! Please check the room code.`)
+        })
+        
+        channel.bind('pusher:member_added', (member: any) => {
+            console.log('👋 Member added:', member)
+        })
+        
+        channel.bind('client-players-update', (data: { players: Player[], hostId: string }) => {
+            console.log('📋 Received players update:', data.players)
+            setPlayers(data.players)
+            if (data.hostId === newPlayerId) {
+                setIsHost(true)
+            }
+        })
+        
+        channel.bind('client-player-joined', (memberInfo: { id: string, name: string }) => {
+            if (isHost) {
+                // Host updates player list
+                const currentPlayers = [...players]
+                const newPlayer: Player = {
+                    id: memberInfo.id,
+                    name: memberInfo.name,
+                    hand: [],
+                    score: 0,
+                    position: ['right', 'top', 'left'][currentPlayers.length - 1] || 'right',
+                    isReady: true,
+                    isOnline: true
+                }
+                currentPlayers.push(newPlayer)
+                setPlayers(currentPlayers)
+                
+                // Broadcast updated player list
+                channel.trigger('client-players-update', {
+                    players: currentPlayers,
+                    hostId: playerId
                 })
-                console.log('✅ PLAYER_JOINED event sent')
-            }, 1000)
+            }
         })
         
-        pusher.connection.bind('error', (err: any) => {
-            console.error('❌ Joiner Pusher connection error:', err)
-            addMessage('Failed to connect to game server!')
+        channel.bind('client-game-event', (event: GameEvent) => {
+            console.log('📨 Received game event:', event)
+            handleGameEvent(event)
         })
         
-        const roomChannel = pusher.subscribe(`game-${inputRoomId}`)
-        setPusherChannel(roomChannel)
-        
-        roomChannel.bind('pusher:subscription_succeeded', () => {
-            console.log(`✅ Joiner subscribed to channel: game-${inputRoomId}`)
-            addMessage(`Connected to room ${inputRoomId}! Waiting for host to start...`)
-        })
-        
-        roomChannel.bind('pusher:subscription_error', (error: any) => {
-            console.error('❌ Joiner subscription error:', error)
-            addMessage('Failed to subscribe to room channel!')
-        })
-        
-        roomChannel.bind('client-game-event', (data: GameEvent) => {
-            console.log('📨 Joiner received game event:', data)
-            handleGameEvent(data)
-        })
-        
-        setPlayers(room.players)
-        setRoomId(inputRoomId)
-        setGameMode('waiting')
-        addMessage(`Joined room: ${inputRoomId}`)
-        addMessage(`Players in room: ${room.players.length}/4`)
+        // Request current players from host
+        setTimeout(() => {
+            channel.trigger('client-get-players', { requesterId: newPlayerId })
+        }, 1000)
     }
 
     const handleGameEvent = (event: GameEvent) => {
-        console.log('🎮 Game event handler triggered:', event.type, event)
+        console.log('🎮 Game event handler:', event.type, event)
         
         switch(event.type) {
             case 'PLAYER_JOINED':
-                console.log(`👋 Player joined: ${event.playerName}`)
                 addMessage(`${event.playerName} joined the game`)
                 if (event.data?.players) {
-                    const playersList: Player[] = event.data.players
-                    console.log('📋 Updated players list:', playersList.map((p: Player) => p.name))
-                    setPlayers(playersList)
-                    const room = globalRooms.get(roomId)
-                    if (room) {
-                        room.players = playersList
-                        globalRooms.set(roomId, room)
-                    }
+                    setPlayers(event.data.players)
                 }
                 break
-            case 'PLAYER_LEFT':
-                console.log(`👋 Player left: ${event.playerName}`)
-                addMessage(`${event.playerName} left the game`)
-                break
             case 'START_GAME':
-                console.log('🎮 START_GAME event received!')
                 if (event.data?.gameState) {
-                    console.log('📋 Game state received:', event.data.gameState)
                     setGameState(event.data.gameState)
                     setCurrentTurn(event.data.gameState.currentTurn)
                     setDirection(event.data.gameState.direction)
@@ -775,44 +676,30 @@ export default function UnoGame() {
                 }
                 break
             case 'SYNC_STATE':
-                console.log('🔄 SYNC_STATE event received')
                 if (event.data?.gameState) {
-                    console.log('📋 Syncing game state...')
                     setGameState(event.data.gameState)
                     setCurrentTurn(event.data.gameState.currentTurn)
                     setDirection(event.data.gameState.direction)
                 }
                 break
             default:
-                console.log('❓ Unknown event type:', event.type)
                 break
         }
     }
 
     const startMultiplayerGame = () => {
-        console.log('🚀 Host attempting to start game...')
+        console.log('🚀 Starting game...')
         
-        const room = globalRooms.get(roomId)
-        
-        if (!room) {
-            console.log('❌ Room not found!')
-            addMessage('Room not found!')
-            return
-        }
-        
-        console.log('📊 Room data:', { playerCount: room.players.length, hostId: room.hostId, currentHost: isHost })
-        
-        if (room.players.length < 2) {
-            console.log('❌ Not enough players:', room.players.length)
+        if (players.length < 2) {
             addMessage('Need at least 2 players to start!')
             return
         }
         
-        console.log('🎲 Initializing game...')
+        // Initialize game
         let newDeck = createDeck()
         newDeck = shuffleDeck(newDeck)
         
-        const playersWithHands: Player[] = room.players.map(player => ({
+        const playersWithHands: Player[] = players.map(player => ({
             ...player,
             hand: [] as CardType[]
         }))
@@ -845,25 +732,13 @@ export default function UnoGame() {
             winner: null
         }
         
-        console.log('✅ Game state created:', { 
-            players: newGameState.players.map(p => p.name),
-            currentTurn: newGameState.currentTurn,
-            deckSize: newGameState.deck.length
-        })
-        
-        room.gameState = newGameState
-        globalRooms.set(roomId, room)
-        
-        if (pusherChannel) {
-            console.log('📤 Sending START_GAME event to all players...')
-            pusherChannel.trigger('client-game-event', {
+        // Broadcast game start to all players
+        if (roomChannel) {
+            roomChannel.trigger('client-game-event', {
                 type: 'START_GAME',
                 playerId: 'system',
                 data: { gameState: newGameState }
             })
-            console.log('✅ START_GAME event sent')
-        } else {
-            console.error('❌ No Pusher channel available!')
         }
         
         setGameState(newGameState)
@@ -874,42 +749,19 @@ export default function UnoGame() {
     }
 
     const leaveRoom = () => {
-        console.log('🚪 Leaving room...')
-        if (roomId && pusherChannel) {
-            const player = players.find(p => p.id === playerId)
-            console.log('📤 Sending PLAYER_LEFT event...')
-            pusherChannel.trigger('client-game-event', {
-                type: 'PLAYER_LEFT',
-                playerId: playerId,
-                playerName: player?.name,
-                data: {}
-            })
-            pusherChannel.unsubscribe()
-            
-            if (pusherConnection) {
-                pusherConnection.disconnect()
-            }
-            
-            const room = globalRooms.get(roomId)
-            if (room) {
-                room.players = room.players.filter(p => p.id !== playerId)
-                if (room.players.length === 0) {
-                    globalRooms.delete(roomId)
-                    console.log('🗑️ Room deleted (empty)')
-                } else {
-                    globalRooms.set(roomId, room)
-                    console.log('👥 Player removed from room. Remaining players:', room.players.length)
-                }
-            }
+        if (roomChannel) {
+            roomChannel.unsubscribe()
+        }
+        if (pusher) {
+            pusher.disconnect()
+            setPusher(null)
         }
         setGameMode('menu')
         setRoomId('')
         setPlayers([])
         setMessages([])
         setIsHost(false)
-        setPusherChannel(null)
-        setPusherConnection(null)
-        console.log('✅ Left room successfully')
+        setRoomChannel(null)
     }
     // #endregion
 
@@ -980,9 +832,9 @@ export default function UnoGame() {
         setGameState(newGameState)
         setCurrentTurn(nextTurn)
         
-        if (selectedMode === 'multiplayer' && pusherChannel) {
-            console.log('📤 Syncing game state after card play...')
-            pusherChannel.trigger('client-game-event', {
+        // Sync with other players
+        if (selectedMode === 'multiplayer' && roomChannel) {
+            roomChannel.trigger('client-game-event', {
                 type: 'SYNC_STATE',
                 playerId: playerId,
                 data: { gameState: newGameState }
@@ -1031,22 +883,19 @@ export default function UnoGame() {
             const nextTurn = getNextTurn(playerId, direction, updatedPlayers)
             setCurrentTurn(nextTurn)
             
-            if (selectedMode === 'multiplayer' && pusherChannel) {
-                console.log('📤 Syncing game state after draw...')
-                pusherChannel.trigger('client-game-event', {
+            if (selectedMode === 'multiplayer' && roomChannel) {
+                roomChannel.trigger('client-game-event', {
                     type: 'SYNC_STATE',
                     playerId: playerId,
                     data: { gameState: { ...newGameState, currentTurn: nextTurn } }
                 })
             }
-        } else {
-            if (selectedMode === 'multiplayer' && pusherChannel) {
-                pusherChannel.trigger('client-game-event', {
-                    type: 'SYNC_STATE',
-                    playerId: playerId,
-                    data: { gameState: newGameState }
-                })
-            }
+        } else if (selectedMode === 'multiplayer' && roomChannel) {
+            roomChannel.trigger('client-game-event', {
+                type: 'SYNC_STATE',
+                playerId: playerId,
+                data: { gameState: newGameState }
+            })
         }
     }
 
@@ -1068,9 +917,8 @@ export default function UnoGame() {
         const nextTurn = getNextTurn(playerId, direction, gameState.players)
         setCurrentTurn(nextTurn)
         
-        if (selectedMode === 'multiplayer' && pusherChannel) {
-            console.log('📤 Syncing game state after color choice...')
-            pusherChannel.trigger('client-game-event', {
+        if (selectedMode === 'multiplayer' && roomChannel) {
+            roomChannel.trigger('client-game-event', {
                 type: 'SYNC_STATE',
                 playerId: playerId,
                 data: { gameState: newGameState }
@@ -1091,12 +939,7 @@ export default function UnoGame() {
     }, [])
     // #endregion
 
-    // Initialize global channel on mount
-    useEffect(() => {
-        initGlobalChannel()
-    }, [])
-
-    // #region RENDER COMPONENTS
+    // #region RENDER COMPONENTS (Same as before)
     const renderMenu = () => (
         <div className="menu-container" style={{
             display: 'flex',
@@ -1343,7 +1186,6 @@ export default function UnoGame() {
                             <span>{player.name}</span>
                             <span>{player.id === playerId ? '(You)' : ''}</span>
                             <span>{player.id === playerId && isHost ? '👑 Host' : ''}</span>
-                            <span>{player.isReady ? '✅ Ready' : '⏳ Waiting'}</span>
                         </div>
                     ))}
                 </div>
