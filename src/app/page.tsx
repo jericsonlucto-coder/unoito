@@ -59,9 +59,9 @@ const createCard = (rgb: string, color: string, deck: CardType[]): void => {
             deck.push(new Card(rgb, i, 20, false, 2, `/images/${color}${i}.png`))
             deck.push(new Card(rgb, i, 20, false, 2, `/images/${color}${i}.png`))
         } else if (i === 13) {
-            deck.push(new Card('any', i, 50, true, 0, `/images/wild${i}.png`))
-        } else {
-            deck.push(new Card('any', i, 50, false, 4, `/images/wild${i}.png`))
+            deck.push(new Card('any', i, 50, true, 0, `/images/wild13.png`))
+        } else if (i === 14) {
+            deck.push(new Card('any', i, 50, true, 4, `/images/wild14.png`))
         }
     }
 }
@@ -131,21 +131,21 @@ export default function UnoGame() {
 
     // #region STATE
     const [cpuHand,         setCpuHand]         = useState<CardType[]>([])
-    const [playerHand,      setPlayerHand]       = useState<CardType[]>([])
-    const [deckState,       setDeckState]        = useState<CardType[]>([])
-    const [playPile,        setPlayPile]         = useState<CardType[]>([])
-    const [cpuScore,        setCpuScore]         = useState(0)
-    const [playerScore,     setPlayerScore]      = useState(0)
-    const [playerTurn,      setPlayerTurn]       = useState(true)
-    const [gameOn,          setGameOn]           = useState(false)
-    const [colorPickerOpen, setColorPickerOpen]  = useState(false)
-    const [showUnoPlayer,   setShowUnoPlayer]    = useState(false)
-    const [showUnoCpu,      setShowUnoCpu]       = useState(false)
-    const [roundVisible,    setRoundVisible]     = useState(false)
-    const [roundWinner,     setRoundWinner]      = useState<'player' | 'cpu' | null>(null)
-    const [gameVisible,     setGameVisible]      = useState(false)
-    const [gameWinner,      setGameWinner]       = useState<'player' | 'cpu' | null>(null)
-    const [cpuVisible,      setCpuVisible]       = useState(false)
+    const [playerHand,      setPlayerHand]      = useState<CardType[]>([])
+    const [deckState,       setDeckState]       = useState<CardType[]>([])
+    const [playPile,        setPlayPile]        = useState<CardType[]>([])
+    const [cpuScore,        setCpuScore]        = useState(0)
+    const [playerScore,     setPlayerScore]     = useState(0)
+    const [playerTurn,      setPlayerTurn]      = useState(true)
+    const [gameOn,          setGameOn]          = useState(false)
+    const [colorPickerOpen, setColorPickerOpen] = useState(false)
+    const [showUnoPlayer,   setShowUnoPlayer]   = useState(false)
+    const [showUnoCpu,      setShowUnoCpu]      = useState(false)
+    const [roundVisible,    setRoundVisible]    = useState(false)
+    const [roundWinner,     setRoundWinner]     = useState<'player' | 'cpu' | null>(null)
+    const [gameVisible,     setGameVisible]     = useState(false)
+    const [gameWinner,      setGameWinner]      = useState<'player' | 'cpu' | null>(null)
+    const [cpuVisible,      setCpuVisible]      = useState(false)
     // #endregion
 
     // #region REFS
@@ -193,7 +193,7 @@ export default function UnoGame() {
         if (newDeck.length > 0) {
             newHand.push(newDeck.shift()!)
         } else {
-            newDeck     = shuffleDeck(newPlayPile)
+            newDeck     = shuffleDeck(newPlayPile.slice(0, -1))
             newPlayPile = [newPlayPile[newPlayPile.length - 1]]
             newHand.push(newDeck.shift()!)
         }
@@ -392,7 +392,7 @@ export default function UnoGame() {
         setTimeout(() => {
             audioManager.playCardSound()
 
-            const newPlayPile = [...currentPlayPile, { ...chosenCard }]
+            const newPlayPile = [...currentPlayPile, { ...chosenCard, playedByPlayer: false }]
             let newCpuHand    = [...leftoverCards]
 
             // cpu picks color after wild
@@ -438,7 +438,7 @@ export default function UnoGame() {
             // end of round
             if (newCpuHand.length === 0) {
                 setTimeout(() => {
-                    const points     = tallyPoints(playerHandRef.current)
+                    const points      = tallyPoints(playerHandRef.current)
                     const newCpuScore = cpuScoreRef.current + points
                     setCpuScore(newCpuScore)
                     cpuScoreRef.current = newCpuScore
@@ -513,7 +513,7 @@ export default function UnoGame() {
         // end of round
         if (newPlayerHand.length === 0) {
             setTimeout(() => {
-                const points        = tallyPoints(cpuHandRef.current)
+                const points         = tallyPoints(cpuHandRef.current)
                 const newPlayerScore = playerScoreRef.current + points
                 setPlayerScore(newPlayerScore)
                 playerScoreRef.current = newPlayerScore
@@ -538,7 +538,7 @@ export default function UnoGame() {
     }, [drawCardLogic, triggerUno, tallyPoints, checkForWinner, playCPU, getCpuDelay])
 
     const handleDrawPileClick = useCallback(() => {
-        if (!playerTurnRef.current || colorPickerRef.current) return
+        if (!playerTurnRef.current || colorPickerRef.current || !gameOnRef.current) return
 
         const { newHand: newPlayerHand, newDeck, newPlayPile } = drawCardLogic(
             playerHandRef.current,
@@ -649,7 +649,7 @@ export default function UnoGame() {
     // start game on mount
     useEffect(() => {
         newHand()
-    }, []) // eslint-disable-line
+    }, [])
 
     // cpu auto play
     useEffect(() => {
@@ -657,9 +657,29 @@ export default function UnoGame() {
             const timer = setTimeout(playCPU, getCpuDelay())
             return () => clearTimeout(timer)
         }
-    }, [playerTurn, gameOn]) // eslint-disable-line
+    }, [playerTurn, gameOn, playCPU, getCpuDelay])
 
     const topCard = playPile[playPile.length - 1]
+    
+    // Helper to get card name
+    const getCardName = (card: CardType) => {
+        if (card.color === 'any') {
+            return card.drawValue === 4 ? 'Wild Draw 4' : 'Wild Card'
+        }
+        const colorNames: Record<string, string> = {
+            'rgb(255, 6, 0)': 'Red',
+            'rgb(0, 170, 69)': 'Green',
+            'rgb(0, 150, 224)': 'Blue',
+            'rgb(255, 222, 0)': 'Yellow'
+        }
+        const valueNames: Record<number, string> = {
+            10: 'Skip',
+            11: 'Reverse',
+            12: 'Draw 2'
+        }
+        const value = valueNames[card.value] || card.value.toString()
+        return `${colorNames[card.color] || card.color} ${value}`
+    }
 
     // #region JSX
     return (
@@ -685,24 +705,50 @@ export default function UnoGame() {
                 )}
             </div>
 
+            {/* INFO PANEL - Turn and Last Played Card */}
+            <div className='info-panel'>
+                <div className='turn-indicator'>
+                    <p className='turn-text'>
+                        {playerTurn ? (
+                            <span className='turn-player'>🎮 YOUR TURN 🎮</span>
+                        ) : (
+                            <span className='turn-cpu'>🤖 CPU TURN 🤖</span>
+                        )}
+                    </p>
+                </div>
+                
+                <div className='last-played'>
+                    <p>📋 Last Played Card</p>
+                    <p className='last-played-card'>
+                        {topCard && (
+                            <>
+                                {topCard.playedByPlayer ? '👤 Player played: ' : '🤖 CPU played: '}
+                                {getCardName(topCard)}
+                                {topCard.drawValue > 0 && ` (+${topCard.drawValue})`}
+                            </>
+                        )}
+                    </p>
+                </div>
+            </div>
+
             {/* PLAY AREA */}
             <div className='play-area'>
                 <div className='score'>
                     <p
                         className='cpu-score-title'
-                        style={{ color: playerTurn ? 'rgb(150, 200, 238)' : 'white' }}
+                        style={{ color: !playerTurn ? '#ff9800' : '#fff' }}
                     >
-                        CPU: <span id='cpu-score'>{cpuScore}</span>
+                        🤖 CPU SCORE: <span id='cpu-score'>{cpuScore}</span>
                     </p>
                     <div id='seperator' />
                     <p
                         className='player-score-title'
-                        style={{ color: playerTurn ? 'white' : 'rgb(150, 200, 238)' }}
+                        style={{ color: playerTurn ? '#4caf50' : '#fff' }}
                     >
-                        PLAYER: <span id='player-score'>{playerScore}</span>
+                        🎮 PLAYER SCORE: <span id='player-score'>{playerScore}</span>
                     </p>
-                    <p className='rules' style={{ color: '#fff' }}>
-                        First to reach {GAME_OVER_SCORE} points loses
+                    <p className='rules' style={{ color: '#ffd700' }}>
+                        ⚡ First to reach {GAME_OVER_SCORE} points loses ⚡
                     </p>
                 </div>
 
@@ -726,6 +772,9 @@ export default function UnoGame() {
                         width={100}
                         height={150}
                     />
+                    <div style={{ textAlign: 'center', marginTop: '0.5rem', fontSize: '1.2rem' }}>
+                        🃟 Draw Card
+                    </div>
                 </div>
             </div>
 
@@ -733,7 +782,7 @@ export default function UnoGame() {
             {roundVisible && (
                 <div className='end-of-round'>
                     <p className='round'>
-                        {roundWinner === 'player' ? 'You won the round!' : 'CPU won the round...'}
+                        {roundWinner === 'player' ? '🎉 You won the round! 🎉' : '😢 CPU won the round... 😢'}
                     </p>
                 </div>
             )}
@@ -742,10 +791,13 @@ export default function UnoGame() {
             {gameVisible && (
                 <div className='end-of-game'>
                     <p className='game'>
-                        {gameWinner === 'player' ? 'You won the game! Play again?' : 'CPU won the game... Play again?'}
+                        {gameWinner === 'player' ? '🏆 YOU WON THE GAME! 🏆' : '💀 CPU WON THE GAME... 💀'}
+                    </p>
+                    <p style={{ fontSize: '1.4rem', marginBottom: '1rem' }}>
+                        {gameWinner === 'player' ? 'Congratulations!' : 'Better luck next time!'}
                     </p>
                     <button className='play-again' onClick={handlePlayAgain}>
-                        Again!
+                        🔄 PLAY AGAIN 🔄
                     </button>
                 </div>
             )}
@@ -762,7 +814,7 @@ export default function UnoGame() {
                             height={120}
                             className='player'
                             onClick={() => handlePlayerCardClick(i)}
-                            style={{ cursor: 'pointer' }}
+                            style={{ cursor: playerTurn && !colorPickerOpen && gameOn ? 'pointer' : 'not-allowed', opacity: playerTurn && !colorPickerOpen && gameOn ? 1 : 0.6 }}
                         />
                     ))}
                 </div>
@@ -776,12 +828,12 @@ export default function UnoGame() {
             {/* COLOR PICKER */}
             {colorPickerOpen && (
                 <div className='color-picker'>
-                    <p>Select a color:</p>
+                    <p>🎨 SELECT A COLOR 🎨</p>
                     <div>
-                        <button className='red'    onClick={() => handleColorChosen('rgb(255, 6, 0)')}>Red</button>
-                        <button className='green'  onClick={() => handleColorChosen('rgb(0, 170, 69)')}>Green</button>
-                        <button className='blue'   onClick={() => handleColorChosen('rgb(0, 150, 224)')}>Blue</button>
-                        <button className='yellow' onClick={() => handleColorChosen('rgb(255, 222, 0)')}>Yellow</button>
+                        <button className='red' onClick={() => handleColorChosen('rgb(255, 6, 0)')}>🔴 RED</button>
+                        <button className='green' onClick={() => handleColorChosen('rgb(0, 170, 69)')}>🟢 GREEN</button>
+                        <button className='blue' onClick={() => handleColorChosen('rgb(0, 150, 224)')}>🔵 BLUE</button>
+                        <button className='yellow' onClick={() => handleColorChosen('rgb(255, 222, 0)')}>🟡 YELLOW</button>
                     </div>
                 </div>
             )}
