@@ -449,9 +449,9 @@ export default function UnoGame() {
             selectedWildColorRef.current = pickedColor
         }
 
-        // Handle Skip card (value 11) - jumps over next player
+        // Handle Reverse card (value 10) - change direction
         let newDirection = currentDirection
-        if (chosenCard.value === 10) { // Reverse card (value 10) - change direction
+        if (chosenCard.value === 10) { // Reverse card
             newDirection = currentDirection === 'clockwise' ? 'counter-clockwise' : 'clockwise'
             setDirection(newDirection)
             directionRef.current = newDirection
@@ -805,9 +805,9 @@ export default function UnoGame() {
         }
     }
 
-    // Helper to get direction arrow
-    const getDirectionArrow = () => {
-        return direction === 'clockwise' ? '🔄 →' : '🔄 ←'
+    // Helper to get direction display
+    const getDirectionDisplay = () => {
+        return direction === 'clockwise' ? 'CLOCKWISE →' : 'COUNTER-CLOCKWISE ←'
     }
 
     // #region JSX
@@ -817,7 +817,6 @@ export default function UnoGame() {
             <div className={`cpu-player ${getPositionClass('top')}`}>
                 <div className="cpu-info">
                     <div className="cpu-name">{getPlayerById('cpu1').name}</div>
-                    <div className="cpu-score">Score: {getPlayerById('cpu1').score}</div>
                 </div>
                 <div className='cpu-hand'>
                     {getPlayerById('cpu1').hand.map((card, i) => (
@@ -842,7 +841,6 @@ export default function UnoGame() {
             <div className={`cpu-player ${getPositionClass('left')}`}>
                 <div className="cpu-info">
                     <div className="cpu-name">{getPlayerById('cpu2').name}</div>
-                    <div className="cpu-score">Score: {getPlayerById('cpu2').score}</div>
                 </div>
                 <div className='cpu-hand-vertical'>
                     {getPlayerById('cpu2').hand.map((card, i) => (
@@ -867,7 +865,6 @@ export default function UnoGame() {
             <div className={`cpu-player ${getPositionClass('right')}`}>
                 <div className="cpu-info">
                     <div className="cpu-name">{getPlayerById('cpu3').name}</div>
-                    <div className="cpu-score">Score: {getPlayerById('cpu3').score}</div>
                 </div>
                 <div className='cpu-hand-vertical'>
                     {getPlayerById('cpu3').hand.map((card, i) => (
@@ -893,10 +890,13 @@ export default function UnoGame() {
                 <div className='turn-indicator'>
                     <p className='turn-text'>
                         {currentTurn === 'player' ? (
-                            <span className='turn-player'>🎮 YOUR TURN 🎮 {getDirectionArrow()}</span>
+                            <span className='turn-player'>🎮 YOUR TURN 🎮</span>
                         ) : (
-                            <span className='turn-cpu'>🤖 {getPlayerById(currentTurn).name}'s TURN 🤖 {getDirectionArrow()}</span>
+                            <span className='turn-cpu'>🤖 {getPlayerById(currentTurn).name}'s TURN 🤖</span>
                         )}
+                    </p>
+                    <p style={{ fontSize: '1.4rem', marginTop: '0.8rem', fontWeight: 'bold', color: '#ffd700' }}>
+                        📍 DIRECTION: {getDirectionDisplay()}
                     </p>
                     <p style={{ fontSize: '1rem', marginTop: '0.5rem', opacity: 0.8 }}>
                         Order: YOU → CPU LEFT → CPU TOP → CPU RIGHT → YOU
@@ -955,13 +955,32 @@ export default function UnoGame() {
                     </div>
                 </div>
 
-                <div className='scores'>
-                    {players.map(player => (
-                        <div key={player.id} className={`score-card ${player.id === currentTurn ? 'active-turn' : ''}`}>
-                            <span className='score-name'>{player.name}</span>
-                            <span className='score-value'>{player.score}</span>
-                        </div>
-                    ))}
+                {/* Direction Information Panel */}
+                <div style={{
+                    background: 'rgba(0, 0, 0, 0.6)',
+                    padding: '1rem 2rem',
+                    borderRadius: '1rem',
+                    marginTop: '1rem',
+                    textAlign: 'center',
+                    backdropFilter: 'blur(5px)',
+                    border: '1px solid rgba(255, 215, 0, 0.3)'
+                }}>
+                    <p style={{ fontSize: '1.2rem', marginBottom: '0.5rem' }}>
+                        🎯 Current Game Direction
+                    </p>
+                    <p style={{ 
+                        fontSize: '2rem', 
+                        fontWeight: 'bold',
+                        color: direction === 'clockwise' ? '#4caf50' : '#ff9800',
+                        textShadow: '0 0 10px rgba(0,0,0,0.5)'
+                    }}>
+                        {direction === 'clockwise' ? '🔄 CLOCKWISE' : '🔄 COUNTER-CLOCKWISE'}
+                    </p>
+                    <p style={{ fontSize: '0.9rem', marginTop: '0.5rem', opacity: 0.7 }}>
+                        {direction === 'clockwise' 
+                            ? 'Turn order: YOU → LEFT → TOP → RIGHT → YOU'
+                            : 'Turn order: YOU → RIGHT → TOP → LEFT → YOU'}
+                    </p>
                 </div>
             </div>
 
@@ -969,7 +988,6 @@ export default function UnoGame() {
             <div className='player-bottom'>
                 <div className="player-info">
                     <div className="player-name">YOU</div>
-                    <div className="player-score">Score: {getPlayerById('player').score}</div>
                 </div>
                 <div className='player-hand'>
                     {getPlayerById('player').hand.map((card, i) => (
