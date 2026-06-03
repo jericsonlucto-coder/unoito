@@ -1,4 +1,4 @@
-/* globals.css - Complete CSS with NO GAPS for rotated cards */
+/* globals.css - Complete CSS for 4-Player Uno Game */
 
 *,
 *::after,
@@ -53,20 +53,20 @@ body {
 }
 
 .cpu-left {
-    left: 10px;
+    left: 20px;
     top: 50%;
     transform: translateY(-50%);
 }
 
 .cpu-right {
-    right: 10px;
+    right: 20px;
     top: 50%;
     transform: translateY(-50%);
 }
 
 .cpu-info, .player-info {
     background: rgba(0, 0, 0, 0.8);
-    padding: 0.5rem 1rem;
+    padding: 0.8rem 1.5rem;
     border-radius: 1rem;
     text-align: center;
     backdrop-filter: blur(5px);
@@ -74,169 +74,73 @@ body {
 }
 
 .cpu-name, .player-name {
-    font-size: 1.2rem;
+    font-size: 1.4rem;
     font-weight: bold;
     color: #ffd700;
     letter-spacing: 1px;
 }
 
 .cpu-score, .player-score {
-    font-size: 1rem;
+    font-size: 1.2rem;
     color: white;
-    margin-top: 0.2rem;
+    margin-top: 0.3rem;
 }
 
 /* CPU Horizontal Hand (Top) */
 .cpu-hand {
     display: flex;
     justify-content: center;
-    gap: 0.5rem;
+    gap: 0.8rem;
     flex-wrap: wrap;
     background: rgba(0, 0, 0, 0.3);
-    padding: 0.8rem;
+    padding: 1rem;
     border-radius: 1rem;
     backdrop-filter: blur(5px);
     max-width: 80vw;
 }
 
-/* CPU Vertical Hand (Left & Right) - NO GAPS */
+/* CPU Vertical Hand (Left & Right) */
 .cpu-hand-vertical {
     display: flex;
     flex-direction: column;
-    background: transparent;
-    padding: 0;
-    margin: 0;
-    max-height: 70vh;
+    gap: 0.8rem;
+    background: rgba(0, 0, 0, 0.3);
+    padding: 1rem;
+    border-radius: 1rem;
+    backdrop-filter: blur(5px);
+    max-height: 60vh;
     overflow-y: auto;
-    overflow-x: visible;
-    gap: 0;
-    line-height: 0;
 }
 
-/* Card wrapper for left and right - eliminates gaps */
-.cpu-card-wrapper {
-    display: block;
-    margin: 0;
-    padding: 0;
-    line-height: 0;
-}
-
-/* Hide scrollbar for cleaner look */
+/* Custom scrollbar for vertical hands */
 .cpu-hand-vertical::-webkit-scrollbar {
-    width: 3px;
+    width: 5px;
 }
 
 .cpu-hand-vertical::-webkit-scrollbar-track {
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: 3px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 5px;
 }
 
 .cpu-hand-vertical::-webkit-scrollbar-thumb {
     background: #ffd700;
-    border-radius: 3px;
+    border-radius: 5px;
 }
 
-/* Left CPU - Rotate cards to the right, NO GAPS */
-.cpu-left .cpu-hand-vertical {
-    justify-content: flex-start;
-    align-items: flex-end;
-}
-
-.cpu-left .cpu-card-vertical {
-    transform: rotate(90deg);
-    transform-origin: center;
-    margin: -2px 0;
-    padding: 0;
-    display: block;
-    width: 60px !important;
-    height: 90px !important;
-}
-
-/* Right CPU - Rotate cards to the left, NO GAPS */
-.cpu-right .cpu-hand-vertical {
-    justify-content: flex-start;
-    align-items: flex-start;
-}
-
-.cpu-right .cpu-card-vertical {
-    transform: rotate(-90deg);
-    transform-origin: center;
-    margin: -2px 0;
-    padding: 0;
-    display: block;
-    width: 60px !important;
-    height: 90px !important;
-}
-
-/* Ensure images fill the card completely */
-.cpu-card-vertical {
-    display: block !important;
-    border-radius: 0.6rem;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-}
-
-.cpu-card-vertical span {
-    display: block !important;
-    line-height: 0 !important;
-}
-
-.cpu-card-vertical img {
-    width: 100% !important;
-    height: 100% !important;
-    display: block !important;
-    border-radius: 0.6rem;
-    object-fit: cover;
-}
-
-/* Adjust container width for rotated cards */
-.cpu-left,
-.cpu-right {
-    width: auto;
-    min-width: 70px;
-    padding: 0.5rem;
-}
-
-/* Remove background for cleaner look */
-.cpu-left .cpu-hand-vertical,
-.cpu-right .cpu-hand-vertical {
-    background: transparent;
-    backdrop-filter: none;
-}
-
-/* Make cards stack perfectly without gaps */
-.cpu-left .cpu-card-wrapper,
-.cpu-right .cpu-card-wrapper {
-    margin: -3px 0;
-    padding: 0;
-    line-height: 0;
-    display: block;
-}
-
-.cpu-left .cpu-card-wrapper:first-child,
-.cpu-right .cpu-card-wrapper:first-child {
-    margin-top: 0;
-}
-
-.cpu-left .cpu-card-wrapper:last-child,
-.cpu-right .cpu-card-wrapper:last-child {
-    margin-bottom: 0;
-}
-
-/* Hover effects for rotated cards */
-.cpu-left .cpu-card-vertical:hover,
-.cpu-right .cpu-card-vertical:hover {
-    transform: scale(1.05);
+.cpu-card {
+    width: 70px;
+    height: auto;
     transition: all 0.2s ease;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
-    z-index: 20;
+    border-radius: 0.8rem;
+    box-shadow: 0 0.4rem 0.8rem rgba(0, 0, 0, 0.3);
 }
 
-.cpu-left .cpu-card-vertical:hover {
-    transform: rotate(90deg) scale(1.05);
-}
-
-.cpu-right .cpu-card-vertical:hover {
-    transform: rotate(-90deg) scale(1.05);
+.cpu-card-vertical {
+    width: 100px;
+    height: auto;
+    transition: all 0.2s ease;
+    border-radius: 0.8rem;
+    box-shadow: 0 0.4rem 0.8rem rgba(0, 0, 0, 0.3);
 }
 
 /* Center Area */
@@ -246,7 +150,7 @@ body {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 1.5rem;
+    gap: 2rem;
     z-index: 5;
     margin: 0 auto;
     width: 100%;
@@ -256,7 +160,7 @@ body {
 /* Turn Indicator */
 .turn-indicator {
     background: rgba(0, 0, 0, 0.85);
-    padding: 1rem 2rem;
+    padding: 1.2rem 2.5rem;
     border-radius: 5rem;
     text-align: center;
     animation: pulse 1.5s ease-in-out infinite;
@@ -278,7 +182,7 @@ body {
 }
 
 .turn-text {
-    font-size: 1.6rem;
+    font-size: 1.8rem;
     font-weight: bold;
     letter-spacing: 2px;
 }
@@ -296,7 +200,7 @@ body {
 /* Last Played Card */
 .last-played {
     background: rgba(0, 0, 0, 0.75);
-    padding: 0.8rem 1.5rem;
+    padding: 1rem 2rem;
     border-radius: 1.5rem;
     text-align: center;
     backdrop-filter: blur(10px);
@@ -304,13 +208,13 @@ body {
 }
 
 .last-played p {
-    font-size: 1.2rem;
-    margin-bottom: 0.3rem;
+    font-size: 1.3rem;
+    margin-bottom: 0.5rem;
     color: #ffd700;
 }
 
 .last-played-card {
-    font-size: 1.3rem;
+    font-size: 1.5rem;
     font-weight: bold;
     color: #fff;
     display: flex;
@@ -325,14 +229,14 @@ body {
     display: flex;
     justify-content: center;
     align-items: center;
-    gap: 3rem;
-    margin: 1.5rem 0;
+    gap: 5rem;
+    margin: 2rem 0;
 }
 
 .play-pile, .draw-pile {
     background: rgba(0, 0, 0, 0.4);
-    padding: 1rem;
-    border-radius: 1rem;
+    padding: 1.5rem;
+    border-radius: 1.5rem;
     transition: transform 0.2s ease;
     backdrop-filter: blur(5px);
 }
@@ -353,8 +257,8 @@ body {
 
 .draw-text {
     text-align: center;
-    margin-top: 0.5rem;
-    font-size: 1.1rem;
+    margin-top: 0.8rem;
+    font-size: 1.3rem;
     font-weight: bold;
     color: #ffd700;
 }
@@ -363,10 +267,10 @@ body {
 .scores {
     display: flex;
     justify-content: center;
-    gap: 1.5rem;
+    gap: 2rem;
     flex-wrap: wrap;
-    margin-top: 1.5rem;
-    padding: 0.8rem;
+    margin-top: 2rem;
+    padding: 1rem;
     background: rgba(0, 0, 0, 0.3);
     border-radius: 2rem;
     backdrop-filter: blur(5px);
@@ -374,13 +278,13 @@ body {
 
 .score-card {
     background: rgba(0, 0, 0, 0.7);
-    padding: 0.5rem 1rem;
+    padding: 0.8rem 1.5rem;
     border-radius: 1rem;
     display: flex;
-    gap: 0.8rem;
+    gap: 1rem;
     transition: all 0.3s ease;
     border: 1px solid rgba(255, 255, 255, 0.2);
-    min-width: 100px;
+    min-width: 120px;
     justify-content: space-between;
 }
 
@@ -394,13 +298,13 @@ body {
 .score-name {
     font-weight: bold;
     color: #ffd700;
-    font-size: 1.1rem;
+    font-size: 1.2rem;
 }
 
 .score-value {
     color: white;
     font-weight: bold;
-    font-size: 1.1rem;
+    font-size: 1.2rem;
 }
 
 /* Player Bottom */
@@ -412,10 +316,10 @@ body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0.8rem;
+    gap: 1rem;
     z-index: 10;
     background: rgba(0, 0, 0, 0.2);
-    padding: 0.8rem;
+    padding: 1rem;
     border-radius: 2rem;
     backdrop-filter: blur(5px);
 }
@@ -423,10 +327,10 @@ body {
 .player-hand {
     display: flex;
     justify-content: center;
-    gap: 0.5rem;
+    gap: 0.8rem;
     flex-wrap: wrap;
     background: rgba(0, 0, 0, 0.3);
-    padding: 0.8rem;
+    padding: 1rem;
     border-radius: 1rem;
     backdrop-filter: blur(5px);
     max-width: 90vw;
@@ -435,14 +339,14 @@ body {
 .player-card {
     cursor: pointer;
     transition: all 0.2s ease;
-    width: 70px;
+    width: 80px;
     height: auto;
-    border-radius: 0.6rem;
+    border-radius: 0.8rem;
     box-shadow: 0 0.4rem 0.8rem rgba(0, 0, 0, 0.3);
 }
 
 .player-card:hover {
-    transform: translateY(-0.8rem) scale(1.05);
+    transform: translateY(-1rem) scale(1.05);
     box-shadow: 0 1rem 2rem rgba(0, 0, 0, 0.4);
 }
 
@@ -474,26 +378,15 @@ body {
 }
 
 .cpu-animation-left {
-    left: -60px;
+    left: -80px;
     top: 50%;
     transform: translateY(-50%);
 }
 
 .cpu-animation-right {
-    right: -60px;
+    right: -80px;
     top: 50%;
     transform: translateY(-50%);
-}
-
-/* Adjust UNO animation for rotated CPUs */
-.cpu-left .cpu-animation-left {
-    left: -50px;
-    transform: translateY(-50%) rotate(90deg);
-}
-
-.cpu-right .cpu-animation-right {
-    right: -50px;
-    transform: translateY(-50%) rotate(-90deg);
 }
 
 @keyframes unoFloat {
@@ -553,7 +446,7 @@ body {
     left: 50%;
     transform: translate(-50%, -50%);
     background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-    padding: 2rem 3rem;
+    padding: 2.5rem 3.5rem;
     border-radius: 2rem;
     text-align: center;
     box-shadow: 0 2rem 4rem rgba(0, 0, 0, 0.5);
@@ -563,11 +456,11 @@ body {
 }
 
 .end-of-round {
-    min-width: 300px;
+    min-width: 350px;
 }
 
 .end-of-game {
-    min-width: 350px;
+    min-width: 400px;
 }
 
 @keyframes modalPop {
@@ -584,27 +477,28 @@ body {
 .end-of-round p,
 .end-of-game p {
     color: #ffd700;
-    font-size: 1.8rem;
-    margin-bottom: 1rem;
+    font-size: 2rem;
+    margin-bottom: 1.5rem;
     font-weight: bold;
 }
 
 .end-of-game button {
     background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
     color: white;
-    padding: 0.8rem 2rem;
-    font-size: 1.4rem;
+    padding: 1rem 2.5rem;
+    font-size: 1.6rem;
     border: none;
     border-radius: 1rem;
     cursor: pointer;
     transition: all 0.2s ease;
     font-weight: bold;
-    margin-top: 0.8rem;
+    margin-top: 1rem;
 }
 
 .end-of-game button:hover {
     transform: scale(1.05);
     box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.3);
+    background: linear-gradient(135deg, #45a049 0%, #3d8b40 100%);
 }
 
 /* Color Picker */
@@ -615,33 +509,33 @@ body {
     left: 50%;
     transform: translate(-50%, -50%);
     background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-    padding: 2rem;
+    padding: 2.5rem;
     border-radius: 2rem;
     text-align: center;
     border: 2px solid #ffd700;
     animation: modalPop 0.3s ease-out;
-    min-width: 300px;
+    min-width: 350px;
     backdrop-filter: blur(10px);
     box-shadow: 0 2rem 4rem rgba(0, 0, 0, 0.5);
 }
 
 .color-picker p {
     color: #ffd700;
-    font-size: 1.6rem;
-    margin-bottom: 1.5rem;
+    font-size: 1.8rem;
+    margin-bottom: 2rem;
     font-weight: bold;
 }
 
 .color-picker > div {
     display: flex;
-    gap: 1rem;
+    gap: 1.5rem;
     justify-content: center;
     flex-wrap: wrap;
 }
 
 .color-picker button {
-    padding: 0.8rem 1.5rem;
-    font-size: 1.4rem;
+    padding: 1rem 2rem;
+    font-size: 1.6rem;
     border: none;
     border-radius: 1rem;
     cursor: pointer;
@@ -696,7 +590,7 @@ body {
 /* Responsive Design */
 @media (max-width: 1200px) {
     .cpu-left, .cpu-right {
-        transform: translateY(-50%) scale(0.95);
+        transform: translateY(-50%) scale(0.9);
     }
     
     .cpu-left {
@@ -705,12 +599,6 @@ body {
     
     .cpu-right {
         right: 5px;
-    }
-    
-    .cpu-left .cpu-card-vertical,
-    .cpu-right .cpu-card-vertical {
-        width: 50px !important;
-        height: 75px !important;
     }
 }
 
@@ -728,7 +616,7 @@ body {
         top: 0;
         left: 0;
         transform: none;
-        margin-bottom: 1rem;
+        margin-bottom: 2rem;
     }
     
     .player-bottom {
@@ -736,7 +624,7 @@ body {
         bottom: 0;
         left: 0;
         transform: none;
-        margin-top: 1rem;
+        margin-top: 2rem;
     }
     
     .game-container {
@@ -744,7 +632,7 @@ body {
     }
     
     .center-area {
-        margin: 0.5rem auto;
+        margin: 1rem auto;
     }
     
     .cpu-hand {
@@ -756,16 +644,16 @@ body {
     }
     
     .table-cards {
-        gap: 1.5rem;
+        gap: 2rem;
     }
     
     .scores {
-        gap: 0.8rem;
+        gap: 1rem;
     }
     
     .score-card {
-        min-width: 80px;
-        padding: 0.4rem 0.8rem;
+        min-width: 90px;
+        padding: 0.5rem 1rem;
     }
 }
 
@@ -775,72 +663,72 @@ body {
     }
     
     .cpu-card {
-        width: 45px;
+        width: 50px;
     }
     
     .player-card {
-        width: 55px;
+        width: 60px;
     }
     
     .play-pile img, 
     .draw-pile img {
-        width: 70px;
+        width: 80px;
         height: auto;
     }
     
     .turn-text {
-        font-size: 1.2rem;
+        font-size: 1.4rem;
     }
     
     .turn-indicator {
-        padding: 0.6rem 1.2rem;
+        padding: 0.8rem 1.5rem;
     }
     
     .last-played-card {
-        font-size: 1rem;
+        font-size: 1.2rem;
     }
     
     .score-name, .score-value {
-        font-size: 0.9rem;
+        font-size: 1rem;
     }
     
     .color-picker {
-        min-width: 250px;
-        padding: 1.2rem;
+        min-width: 280px;
+        padding: 1.5rem;
     }
     
     .color-picker button {
-        padding: 0.5rem 1rem;
-        font-size: 1.1rem;
+        padding: 0.6rem 1.2rem;
+        font-size: 1.2rem;
     }
     
     .end-of-round, .end-of-game {
-        min-width: 250px;
-        padding: 1.2rem;
+        min-width: 280px;
+        padding: 1.5rem;
     }
     
     .end-of-round p, .end-of-game p {
-        font-size: 1.2rem;
+        font-size: 1.4rem;
     }
 }
 
 @media (max-width: 480px) {
     .cpu-card {
-        width: 35px;
+        width: 40px;
     }
     
     .player-card {
-        width: 45px;
+        width: 50px;
     }
     
     .play-pile img, 
     .draw-pile img {
-        width: 55px;
+        width: 60px;
         height: auto;
     }
     
     .turn-text {
-        font-size: 1rem;
+        font-size: 1.2rem;
     }
     
     .scores {
@@ -848,24 +736,24 @@ body {
     }
     
     .score-card {
-        min-width: 60px;
-        padding: 0.2rem 0.5rem;
+        min-width: 70px;
+        padding: 0.3rem 0.8rem;
     }
     
     .score-name, .score-value {
-        font-size: 0.7rem;
-    }
-    
-    .draw-text {
         font-size: 0.8rem;
     }
     
+    .draw-text {
+        font-size: 1rem;
+    }
+    
     .last-played p {
-        font-size: 0.9rem;
+        font-size: 1rem;
     }
     
     .last-played-card {
-        font-size: 0.9rem;
+        font-size: 1rem;
     }
 }
 
@@ -879,32 +767,32 @@ body {
         position: relative;
         top: 0;
         transform: none;
-        margin-bottom: 0.5rem;
+        margin-bottom: 1rem;
     }
     
     .player-bottom {
         position: relative;
         bottom: 0;
         transform: none;
-        margin-top: 0.5rem;
+        margin-top: 1rem;
     }
     
     .cpu-hand {
-        max-height: 70px;
+        max-height: 80px;
         overflow-y: auto;
     }
     
     .player-hand {
-        max-height: 70px;
+        max-height: 80px;
         overflow-y: auto;
     }
     
     .center-area {
-        gap: 0.8rem;
+        gap: 1rem;
     }
     
     .table-cards {
-        margin: 0.3rem 0;
+        margin: 0.5rem 0;
     }
 }
 
@@ -928,49 +816,32 @@ body {
     text-align: center;
 }
 
-/* Fix for Next.js Image component */
-span img {
-    border-radius: 0.6rem !important;
+.mt-1 { margin-top: 1rem; }
+.mt-2 { margin-top: 2rem; }
+.mb-1 { margin-bottom: 1rem; }
+.mb-2 { margin-bottom: 2rem; }
+
+/* Card hover effects for playable cards */
+.player-card.playable {
+    cursor: pointer;
+    filter: brightness(1.05);
 }
 
-/* Ensure card images are visible and properly sized */
-.cpu-card-vertical span,
-.cpu-card span,
-.player-card span {
-    display: block !important;
-    width: 100% !important;
-    height: 100% !important;
-    line-height: 0 !important;
+.player-card.unplayable {
+    opacity: 0.6;
+    cursor: not-allowed;
 }
 
-/* Critical fix for rotated cards - eliminate ALL gaps */
-.cpu-left .cpu-hand-vertical,
-.cpu-right .cpu-hand-vertical {
-    line-height: 0;
-    font-size: 0;
+/* Active player highlight */
+@keyframes activeGlow {
+    0%, 100% {
+        box-shadow: 0 0 5px rgba(76, 175, 80, 0.5);
+    }
+    50% {
+        box-shadow: 0 0 20px rgba(76, 175, 80, 0.8);
+    }
 }
 
-.cpu-left .cpu-card-wrapper,
-.cpu-right .cpu-card-wrapper {
-    margin: -4px 0;
-    padding: 0;
-    line-height: 0;
-    font-size: 0;
-    display: block;
-}
-
-.cpu-left .cpu-card-wrapper:first-child,
-.cpu-right .cpu-card-wrapper:first-child {
-    margin-top: 0;
-}
-
-.cpu-left .cpu-card-wrapper:last-child,
-.cpu-right .cpu-card-wrapper:last-child {
-    margin-bottom: 0;
-}
-
-.cpu-left .cpu-card-vertical,
-.cpu-right .cpu-card-vertical {
-    margin: 0;
-    padding: 0;
+.player-card.active {
+    animation: activeGlow 1s ease-in-out infinite;
 }
