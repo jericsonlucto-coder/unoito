@@ -182,6 +182,16 @@ export default function UnoGame() {
     useEffect(() => { selectedWildColorRef.current = selectedWildColor }, [selectedWildColor])
     // #endregion
 
+    // #region MONITOR PLAYER HAND
+    useEffect(() => {
+        const player = players.find(p => p.id === 'player')
+        if (player) {
+            console.log("🔍 RENDER - Player hand length:", player.hand.length)
+            console.log("🔍 RENDER - Player hand cards:", player.hand.map(c => ({ color: c.color, value: c.value })))
+        }
+    }, [players])
+    // #endregion
+
     // #region AUDIO INIT
     useEffect(() => {
         audioManager.init()
@@ -202,26 +212,30 @@ export default function UnoGame() {
         deck: CardType[],
         pile: CardType[]
     ): { newHand: CardType[], newDeck: CardType[], newPlayPile: CardType[], drawnCard: CardType | null } => {
+        console.log("📦 drawCardLogic called with hand length:", hand.length)
+        
         let newDeck = [...deck]
         let newPlayPile = [...pile]
         let drawnCard: CardType | null = null
         
-        // Create a new array with existing cards
         let newHand = [...hand]
+        console.log("📦 Copied hand length:", newHand.length)
 
         if (newDeck.length > 0) {
             drawnCard = newDeck.shift()!
             newHand.push(drawnCard)
+            console.log("📦 After push - new hand length:", newHand.length)
         } else if (newPlayPile.length > 1) {
-            // Reshuffle the play pile (excluding the top card)
             const cardsToShuffle = newPlayPile.slice(0, -1)
             newDeck = shuffleDeck(cardsToShuffle)
             newPlayPile = [newPlayPile[newPlayPile.length - 1]]
             drawnCard = newDeck.shift()!
             newHand.push(drawnCard)
+            console.log("📦 After reshuffle - new hand length:", newHand.length)
         }
 
         audioManager.play('drawCard')
+        console.log("📦 Returning new hand length:", newHand.length)
         return { newHand, newDeck, newPlayPile, drawnCard }
     }, [])
 
@@ -244,6 +258,7 @@ export default function UnoGame() {
 
     // #region NEW GAME
     const newGame = useCallback(() => {
+        console.log("🎮 Starting new game...")
         setGameOn(true)
         gameOnRef.current = true
         setColorPickerOpen(false)
@@ -288,6 +303,8 @@ export default function UnoGame() {
         playersRef.current = newPlayers
         deckRef.current = newDeck
         playPileRef.current = newPlayPile
+        
+        console.log("🎮 New game - Player hand size:", newPlayers[0].hand.length)
     }, [players])
     // #endregion
 
@@ -578,7 +595,12 @@ export default function UnoGame() {
     const handleDrawPileClick = useCallback(() => {
         if (currentTurnRef.current !== 'player' || colorPickerRef.current || !gameOnRef.current) return
 
+        console.log("=== DRAW CARD DEBUG ===")
+        
         const player = getPlayerById('player')
+        console.log("Current hand BEFORE draw:", JSON.stringify(player.hand.map(c => ({ color: c.color, value: c.value, src: c.src.split('/').pop() }))))
+        console.log("Current hand length:", player.hand.length)
+        
         const currentDeck = [...deckRef.current]
         const currentPlayPile = [...playPileRef.current]
         
@@ -588,20 +610,30 @@ export default function UnoGame() {
         
         // Create a new hand array with all existing cards
         let newPlayerHand = [...player.hand]
+        console.log("Copied hand length before push:", newPlayerHand.length)
 
         if (newDeck.length > 0) {
             drawnCard = newDeck.shift()!
-            newPlayerHand.push(drawnCard)  // Add the new card to the hand
+            console.log("Drawn card:", { color: drawnCard.color, value: drawnCard.value, src: drawnCard.src.split('/').pop() })
+            newPlayerHand.push(drawnCard)
+            console.log("Hand AFTER push (same array):", newPlayerHand.length)
+            console.log("New hand cards:", newPlayerHand.map(c => ({ color: c.color, value: c.value })))
         } else {
             // Reshuffle the play pile (excluding the top card)
+            console.log("Deck empty, reshuffling...")
             const cardsToShuffle = newPlayPile.slice(0, -1)
             newDeck = shuffleDeck(cardsToShuffle)
             newPlayPile = [newPlayPile[newPlayPile.length - 1]]
             drawnCard = newDeck.shift()!
-            newPlayerHand.push(drawnCard)  // Add the new card to the hand
+            console.log("Drawn card after reshuffle:", { color: drawnCard.color, value: drawnCard.value })
+            newPlayerHand.push(drawnCard)
+            console.log("Hand AFTER push (same array):", newPlayerHand.length)
         }
 
         audioManager.play('drawCard')
+
+        console.log("Final hand before updating state:", newPlayerHand.length)
+        console.log("Final hand cards:", newPlayerHand.map(c => ({ color: c.color, value: c.value })))
 
         // Update the player with the expanded hand
         const updatedPlayers = playersRef.current.map(p =>
@@ -625,15 +657,18 @@ export default function UnoGame() {
                 topCard.color === 'any'
 
             if (canPlayDrawnCard) {
-                // Player can play the drawn card - turn stays with player
+                console.log("Drawn card can be played - turn stays with player")
+                console.log("=== END DRAW DEBUG ===")
                 return
             }
         }
         
         // Cannot play drawn card, move to next player
+        console.log("Cannot play drawn card - moving to next player")
         const nextTurn = getNextTurn('player')
         setCurrentTurn(nextTurn)
         currentTurnRef.current = nextTurn
+        console.log("=== END DRAW DEBUG ===")
     }, [])
 
     const handleColorChosen = useCallback((color: string, colorName: string) => {
