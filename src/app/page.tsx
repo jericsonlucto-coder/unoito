@@ -13,6 +13,14 @@ interface CardType {
     src: string
     playedByPlayer: boolean
 }
+
+interface Player {
+    id: 'player' | 'cpu1' | 'cpu2' | 'cpu3'
+    hand: CardType[]
+    score: number
+    position: 'bottom' | 'top' | 'left' | 'right'
+    name: string
+}
 // #endregion
 
 // #region CARD CLASS
@@ -126,57 +134,52 @@ const audioManager = new AudioManager()
 // #endregion
 
 const GAME_OVER_SCORE = 100
+const PLAYER_ORDER: Player['id'][] = ['cpu1', 'cpu2', 'cpu3', 'player']
 
 export default function UnoGame() {
 
     // #region STATE
-    const [cpuHand,         setCpuHand]         = useState<CardType[]>([])
-    const [playerHand,      setPlayerHand]      = useState<CardType[]>([])
-    const [deckState,       setDeckState]       = useState<CardType[]>([])
-    const [playPile,        setPlayPile]        = useState<CardType[]>([])
-    const [cpuScore,        setCpuScore]        = useState(0)
-    const [playerScore,     setPlayerScore]     = useState(0)
-    const [playerTurn,      setPlayerTurn]      = useState(true)
-    const [gameOn,          setGameOn]          = useState(false)
+    const [players, setPlayers] = useState<Player[]>([
+        { id: 'player', hand: [], score: 0, position: 'bottom', name: 'YOU' },
+        { id: 'cpu1', hand: [], score: 0, position: 'top', name: 'CPU TOP' },
+        { id: 'cpu2', hand: [], score: 0, position: 'left', name: 'CPU LEFT' },
+        { id: 'cpu3', hand: [], score: 0, position: 'right', name: 'CPU RIGHT' },
+    ])
+    const [deckState, setDeckState] = useState<CardType[]>([])
+    const [playPile, setPlayPile] = useState<CardType[]>([])
+    const [currentTurn, setCurrentTurn] = useState<Player['id']>('player')
+    const [gameOn, setGameOn] = useState(false)
     const [colorPickerOpen, setColorPickerOpen] = useState(false)
-    const [showUnoPlayer,   setShowUnoPlayer]   = useState(false)
-    const [showUnoCpu,      setShowUnoCpu]      = useState(false)
-    const [roundVisible,    setRoundVisible]    = useState(false)
-    const [roundWinner,     setRoundWinner]     = useState<'player' | 'cpu' | null>(null)
-    const [gameVisible,     setGameVisible]     = useState(false)
-    const [gameWinner,      setGameWinner]      = useState<'player' | 'cpu' | null>(null)
-    const [cpuVisible,      setCpuVisible]      = useState(false)
-    const [wildCardColor,   setWildCardColor]   = useState<string>('')
+    const [showUno, setShowUno] = useState<{ [key: string]: boolean }>({})
+    const [roundVisible, setRoundVisible] = useState(false)
+    const [roundWinner, setRoundWinner] = useState<string | null>(null)
+    const [gameVisible, setGameVisible] = useState(false)
+    const [gameWinner, setGameWinner] = useState<string | null>(null)
+    const [wildCardColor, setWildCardColor] = useState<string>('')
     const [selectedWildColor, setSelectedWildColor] = useState<string>('')
-    const [isDrawing,       setIsDrawing]       = useState(false) // Add this state to prevent double drawing
+    const [cpuVisible, setCpuVisible] = useState<{ [key: string]: boolean }>({
+        cpu1: false,
+        cpu2: false,
+        cpu3: false,
+    })
     // #endregion
 
     // #region REFS
-    const playerTurnRef    = useRef(playerTurn)
-    const gameOnRef        = useRef(gameOn)
-    const cpuHandRef       = useRef(cpuHand)
-    const playerHandRef    = useRef(playerHand)
-    const deckRef          = useRef(deckState)
-    const playPileRef      = useRef(playPile)
-    const colorPickerRef   = useRef(colorPickerOpen)
-    const cpuScoreRef      = useRef(cpuScore)
-    const playerScoreRef   = useRef(playerScore)
-    const wildCardColorRef = useRef(wildCardColor)
+    const gameOnRef = useRef(gameOn)
+    const playersRef = useRef(players)
+    const deckRef = useRef(deckState)
+    const playPileRef = useRef(playPile)
+    const currentTurnRef = useRef(currentTurn)
+    const colorPickerRef = useRef(colorPickerOpen)
     const selectedWildColorRef = useRef(selectedWildColor)
-    const isDrawingRef     = useRef(false) // Add ref for drawing lock
 
-    useEffect(() => { playerTurnRef.current  = playerTurn    }, [playerTurn])
-    useEffect(() => { gameOnRef.current      = gameOn        }, [gameOn])
-    useEffect(() => { cpuHandRef.current     = cpuHand       }, [cpuHand])
-    useEffect(() => { playerHandRef.current  = playerHand    }, [playerHand])
-    useEffect(() => { deckRef.current        = deckState     }, [deckState])
-    useEffect(() => { playPileRef.current    = playPile      }, [playPile])
+    useEffect(() => { gameOnRef.current = gameOn }, [gameOn])
+    useEffect(() => { playersRef.current = players }, [players])
+    useEffect(() => { deckRef.current = deckState }, [deckState])
+    useEffect(() => { playPileRef.current = playPile }, [playPile])
+    useEffect(() => { currentTurnRef.current = currentTurn }, [currentTurn])
     useEffect(() => { colorPickerRef.current = colorPickerOpen }, [colorPickerOpen])
-    useEffect(() => { cpuScoreRef.current    = cpuScore      }, [cpuScore])
-    useEffect(() => { playerScoreRef.current = playerScore   }, [playerScore])
-    useEffect(() => { wildCardColorRef.current = wildCardColor }, [wildCardColor])
     useEffect(() => { selectedWildColorRef.current = selectedWildColor }, [selectedWildColor])
-    useEffect(() => { isDrawingRef.current = isDrawing }, [isDrawing])
     // #endregion
 
     // #region AUDIO INIT
@@ -186,23 +189,27 @@ export default function UnoGame() {
     // #endregion
 
     // #region HELPERS
-    const getCpuDelay = useCallback(() => {
-        return Math.floor((Math.random() * cpuHandRef.current.length * 200) + 1500)
-    }, [])
+    const getPlayerById = (id: Player['id']) => players.find(p => p.id === id)!
+    
+    const getNextTurn = (current: Player['id']): Player['id'] => {
+        const currentIndex = PLAYER_ORDER.indexOf(current)
+        const nextIndex = (currentIndex + 1) % PLAYER_ORDER.length
+        return PLAYER_ORDER[nextIndex]
+    }
 
     const drawCardLogic = useCallback((
         hand: CardType[],
         deck: CardType[],
         pile: CardType[]
     ): { newHand: CardType[], newDeck: CardType[], newPlayPile: CardType[] } => {
-        let newDeck      = [...deck]
-        let newPlayPile  = [...pile]
-        const newHand    = [...hand]
+        let newDeck = [...deck]
+        let newPlayPile = [...pile]
+        const newHand = [...hand]
 
         if (newDeck.length > 0) {
             newHand.push(newDeck.shift()!)
         } else {
-            newDeck     = shuffleDeck(newPlayPile.slice(0, -1))
+            newDeck = shuffleDeck(newPlayPile.slice(0, -1))
             newPlayPile = [newPlayPile[newPlayPile.length - 1]]
             newHand.push(newDeck.shift()!)
         }
@@ -211,44 +218,50 @@ export default function UnoGame() {
         return { newHand, newDeck, newPlayPile }
     }, [])
 
-    const triggerUno = useCallback((who: 'player' | 'cpu') => {
+    const triggerUno = useCallback((playerId: string) => {
         audioManager.play('uno')
-        if (who === 'player') {
-            setShowUnoPlayer(true)
-            setTimeout(() => setShowUnoPlayer(false), 2000)
-        } else {
-            setShowUnoCpu(true)
-            setTimeout(() => setShowUnoCpu(false), 2000)
-        }
+        setShowUno(prev => ({ ...prev, [playerId]: true }))
+        setTimeout(() => {
+            setShowUno(prev => ({ ...prev, [playerId]: false }))
+        }, 2000)
     }, [])
 
-    const tallyPoints = useCallback((loserHand: CardType[]): number => {
-        return loserHand.reduce((sum, card) => sum + card.points, 0)
+    const tallyPoints = useCallback((hand: CardType[]): number => {
+        return hand.reduce((sum, card) => sum + card.points, 0)
+    }, [])
+
+    const getCpuDelay = useCallback(() => {
+        return Math.floor((Math.random() * 500) + 1000)
     }, [])
     // #endregion
 
-    // #region NEW HAND
-    const newHand = useCallback(() => {
+    // #region NEW GAME
+    const newGame = useCallback(() => {
         setGameOn(true)
         gameOnRef.current = true
         setColorPickerOpen(false)
         colorPickerRef.current = false
         setWildCardColor('')
         setSelectedWildColor('')
-        setIsDrawing(false)
-        isDrawingRef.current = false
 
         let newDeck = createDeck()
         newDeck = shuffleDeck(newDeck)
         audioManager.play('shuffle')
 
-        const newCpuHand:    CardType[] = []
-        const newPlayerHand: CardType[] = []
+        const newPlayers: Player[] = players.map(player => ({
+            ...player,
+            hand: [],
+            score: 0
+        }))
+
+        // Deal 7 cards to each player
         for (let i = 0; i < 7; i++) {
-            newCpuHand.push(newDeck.shift()!)
-            newPlayerHand.push(newDeck.shift()!)
+            for (let j = 0; j < newPlayers.length; j++) {
+                newPlayers[j].hand.push(newDeck.shift()!)
+            }
         }
 
+        // Find first valid start card
         let startCard: CardType | null = null
         for (let i = 0; i < newDeck.length; i++) {
             if (newDeck[i].color !== 'any' && newDeck[i].value <= 9) {
@@ -259,80 +272,87 @@ export default function UnoGame() {
 
         const newPlayPile = startCard ? [startCard] : []
 
-        setCpuHand(newCpuHand)
-        setPlayerHand(newPlayerHand)
+        setPlayers(newPlayers)
         setDeckState(newDeck)
         setPlayPile(newPlayPile)
+        setCurrentTurn('player')
+        currentTurnRef.current = 'player'
 
-        cpuHandRef.current    = newCpuHand
-        playerHandRef.current = newPlayerHand
-        deckRef.current       = newDeck
-        playPileRef.current   = newPlayPile
-    }, [])
+        playersRef.current = newPlayers
+        deckRef.current = newDeck
+        playPileRef.current = newPlayPile
+    }, [players])
     // #endregion
 
     // #region CHECK FOR WINNER
-    const checkForWinner = useCallback((
-        pScore: number,
-        cScore: number,
-        pHand:  CardType[],
-        cHand:  CardType[]
-    ) => {
-        if (pScore < GAME_OVER_SCORE && cScore < GAME_OVER_SCORE) {
-            if (pHand.length === 0) {
-                audioManager.play('winRound')
-                setRoundWinner('player')
-                setRoundVisible(true)
+    const checkForWinner = useCallback(() => {
+        const currentPlayers = playersRef.current
+        const winner = currentPlayers.find(p => p.hand.length === 0)
+        
+        if (winner) {
+            // Add points to winner
+            const updatedPlayers = currentPlayers.map(p => {
+                if (p.id === winner.id) {
+                    const points = currentPlayers.reduce((sum, player) => {
+                        if (player.id !== winner.id) {
+                            return sum + tallyPoints(player.hand)
+                        }
+                        return sum
+                    }, 0)
+                    return { ...p, score: p.score + points }
+                }
+                return p
+            })
+            
+            setPlayers(updatedPlayers)
+            playersRef.current = updatedPlayers
+            
+            const gameWinner = updatedPlayers.find(p => p.score >= GAME_OVER_SCORE)
+            
+            if (gameWinner) {
                 setGameOn(false)
                 gameOnRef.current = false
-                setTimeout(() => {
-                    setRoundVisible(false)
-                    newHand()
-                }, 3000)
-            } else if (cHand.length === 0) {
-                audioManager.play('lose')
-                setRoundWinner('cpu')
-                setRoundVisible(true)
-                setGameOn(false)
-                gameOnRef.current = false
-                setTimeout(() => {
-                    setRoundVisible(false)
-                    newHand()
-                }, 3000)
-            }
-        } else {
-            setGameOn(false)
-            gameOnRef.current = false
-            if (pScore >= GAME_OVER_SCORE) {
-                audioManager.play('lose')
-                setGameWinner('cpu')
+                setGameWinner(gameWinner.id === 'player' ? 'You' : gameWinner.name)
+                setGameVisible(true)
+                audioManager.play(gameWinner.id === 'player' ? 'winGame' : 'lose')
             } else {
-                audioManager.play('winGame')
-                setGameWinner('player')
+                setRoundWinner(winner.id === 'player' ? 'You' : winner.name)
+                setRoundVisible(true)
+                setGameOn(false)
+                gameOnRef.current = false
+                setTimeout(() => {
+                    setRoundVisible(false)
+                    newGame()
+                }, 3000)
             }
-            setGameVisible(true)
+            return true
         }
-    }, [newHand])
+        return false
+    }, [tallyPoints, newGame])
     // #endregion
 
     // #region CPU LOGIC
-    const playCPU = useCallback(() => {
-        if (playerTurnRef.current || !gameOnRef.current) return
+    const playCPU = useCallback(async (cpuId: Player['id']) => {
+        if (currentTurnRef.current !== cpuId || !gameOnRef.current || colorPickerRef.current) return
 
-        const currentCpuHand    = [...cpuHandRef.current]
-        const currentPlayerHand = [...playerHandRef.current]
-        const currentDeck       = [...deckRef.current]
-        const currentPlayPile   = [...playPileRef.current]
-        const topCard           = currentPlayPile[currentPlayPile.length - 1]
+        await new Promise(resolve => setTimeout(resolve, getCpuDelay()))
 
-        const playable:   CardType[] = []
-        const remaining:  CardType[] = []
+        if (currentTurnRef.current !== cpuId || !gameOnRef.current) return
 
-        for (const card of currentCpuHand) {
+        const cpu = getPlayerById(cpuId)
+        const currentPlayPile = [...playPileRef.current]
+        const currentDeck = [...deckRef.current]
+        const topCard = currentPlayPile[currentPlayPile.length - 1]
+
+        // Find playable cards
+        const playable: CardType[] = []
+        const remaining: CardType[] = []
+
+        for (const card of cpu.hand) {
             if (
                 card.color === topCard.color ||
                 card.value === topCard.value ||
-                card.color === 'any'         ||
+                card.color === 'any' ||
                 topCard.color === 'any'
             ) {
                 playable.push(card)
@@ -342,382 +362,280 @@ export default function UnoGame() {
         }
 
         if (playable.length === 0) {
-            const { newHand: newCpu, newDeck, newPlayPile } = drawCardLogic(
+            // Draw a card
+            const { newHand, newDeck, newPlayPile } = drawCardLogic(
                 remaining, currentDeck, currentPlayPile
             )
-            setCpuHand(newCpu)
-            cpuHandRef.current = newCpu
+            
+            const updatedPlayers = playersRef.current.map(p =>
+                p.id === cpuId ? { ...p, hand: newHand } : p
+            )
+            
+            setPlayers(updatedPlayers)
+            playersRef.current = updatedPlayers
             setDeckState(newDeck)
             deckRef.current = newDeck
             setPlayPile(newPlayPile)
             playPileRef.current = newPlayPile
-
-            setTimeout(() => {
-                setPlayerTurn(true)
-                playerTurnRef.current = true
-            }, 500)
+            
+            setCurrentTurn(getNextTurn(cpuId))
+            currentTurnRef.current = getNextTurn(cpuId)
             return
         }
 
-        let chosenCard:    CardType
+        // Choose a card to play
+        let chosenCard: CardType
         let leftoverCards: CardType[]
 
         if (playable.length === 1) {
-            chosenCard    = playable[0]
+            chosenCard = playable[0]
             leftoverCards = remaining
         } else {
-            const strategist   = Math.random()
-            const lastCard     = currentPlayPile[currentPlayPile.length - 1]
-            const secondLast   = currentPlayPile[currentPlayPile.length - 2]
-            const useHighCard  =
-                currentPlayPile.length > 2 && (
-                    strategist > 0.7 ||
-                    currentPlayerHand.length < 3 ||
-                    currentCpuHand.length > currentPlayerHand.length * 2 ||
-                    (lastCard?.playedByPlayer   && lastCard?.drawValue > 0) ||
-                    (secondLast?.playedByPlayer && lastCard?.drawValue  > 0)
-                )
-
-            let cardIndex = 0
-            if (useHighCard) {
-                let highest = 0
-                playable.forEach((card, i) => {
-                    if (card.value > highest) { highest = card.value; cardIndex = i }
-                })
-            } else {
-                let lowest = 14
-                playable.forEach((card, i) => {
-                    if (card.value < lowest) { lowest = card.value; cardIndex = i }
-                })
-            }
-
-            const leftoverPlayable = [...playable]
-            chosenCard    = leftoverPlayable.splice(cardIndex, 1)[0]
-            leftoverCards = [...remaining, ...leftoverPlayable]
+            // Simple AI: prefer playing higher value cards
+            const highestValue = Math.max(...playable.map(c => c.value))
+            const cardIndex = playable.findIndex(c => c.value === highestValue)
+            chosenCard = playable[cardIndex]
+            leftoverCards = [...remaining, ...playable.filter((_, i) => i !== cardIndex)]
         }
 
-        setTimeout(() => {
-            audioManager.playCardSound()
+        audioManager.playCardSound()
 
-            const newPlayPile = [...currentPlayPile, { ...chosenCard, playedByPlayer: false }]
-            let newCpuHand    = [...leftoverCards]
+        const newPlayPile = [...currentPlayPile, { ...chosenCard, playedByPlayer: false }]
+        let newCpuHand = [...leftoverCards]
 
-            if (chosenCard.color === 'any' && chosenCard.drawValue === 0) {
-                const colors    = ['rgb(255, 6, 0)', 'rgb(0, 170, 69)', 'rgb(0, 150, 224)', 'rgb(255, 222, 0)']
-                const counts    = [0, 0, 0, 0]
-                for (const card of newCpuHand) {
-                    colors.forEach((color, i) => { if (card.color === color) counts[i]++ })
-                }
-                const pickedColor = colors[counts.indexOf(Math.max(...counts))]
-                newPlayPile[newPlayPile.length - 1].color = pickedColor
-                setWildCardColor(pickedColor)
-                setSelectedWildColor(pickedColor)
-                wildCardColorRef.current = pickedColor
-                selectedWildColorRef.current = pickedColor
+        // Handle wild card color selection
+        if (chosenCard.color === 'any' && chosenCard.drawValue === 0) {
+            const colors = ['rgb(255, 6, 0)', 'rgb(0, 170, 69)', 'rgb(0, 150, 224)', 'rgb(255, 222, 0)']
+            const pickedColor = colors[Math.floor(Math.random() * colors.length)]
+            newPlayPile[newPlayPile.length - 1].color = pickedColor
+            setWildCardColor(pickedColor)
+            setSelectedWildColor(pickedColor)
+            selectedWildColorRef.current = pickedColor
+        }
+
+        // Apply draw card penalty to next player
+        if (chosenCard.drawValue > 0) {
+            audioManager.play('plusCard')
+            const nextPlayerId = getNextTurn(cpuId)
+            let nextPlayer = getPlayerById(nextPlayerId)
+            let updatedHand = [...nextPlayer.hand]
+            let updatedDeck = [...currentDeck]
+            let updatedPlayPile = [...newPlayPile]
+
+            for (let i = 0; i < chosenCard.drawValue; i++) {
+                const result = drawCardLogic(updatedHand, updatedDeck, updatedPlayPile)
+                updatedHand = result.newHand
+                updatedDeck = result.newDeck
+                updatedPlayPile = result.newPlayPile
             }
 
+            const updatedPlayers = playersRef.current.map(p => {
+                if (p.id === nextPlayerId) return { ...p, hand: updatedHand }
+                if (p.id === cpuId) return { ...p, hand: newCpuHand }
+                return p
+            })
+
+            setPlayers(updatedPlayers)
+            playersRef.current = updatedPlayers
+            setDeckState(updatedDeck)
+            deckRef.current = updatedDeck
+            setPlayPile(updatedPlayPile)
+            playPileRef.current = updatedPlayPile
+        } else {
+            const updatedPlayers = playersRef.current.map(p =>
+                p.id === cpuId ? { ...p, hand: newCpuHand } : p
+            )
+            setPlayers(updatedPlayers)
+            playersRef.current = updatedPlayers
             setPlayPile(newPlayPile)
             playPileRef.current = newPlayPile
-            setCpuHand(newCpuHand)
-            cpuHandRef.current = newCpuHand
+        }
 
-            if (newCpuHand.length === 1) triggerUno('cpu')
+        // Check for UNO
+        if (newCpuHand.length === 1) {
+            triggerUno(cpuId)
+        }
 
-            if (chosenCard.drawValue > 0) {
-                audioManager.play('plusCard')
-                let updatedPlayerHand = [...currentPlayerHand]
-                let updatedDeck       = [...currentDeck]
-                let updatedPlayPile   = [...newPlayPile]
+        // Check for winner
+        if (newCpuHand.length === 0) {
+            checkForWinner()
+            return
+        }
 
-                for (let i = 0; i < chosenCard.drawValue; i++) {
-                    const result      = drawCardLogic(updatedPlayerHand, updatedDeck, updatedPlayPile)
-                    updatedPlayerHand = result.newHand
-                    updatedDeck       = result.newDeck
-                    updatedPlayPile   = result.newPlayPile
-                }
+        // Move to next player
+        const nextTurn = chosenCard.changeTurn ? getNextTurn(getNextTurn(cpuId)) : getNextTurn(cpuId)
+        setCurrentTurn(nextTurn)
+        currentTurnRef.current = nextTurn
+    }, [drawCardLogic, triggerUno, checkForWinner, getCpuDelay])
 
-                setPlayerHand(updatedPlayerHand)
-                playerHandRef.current = updatedPlayerHand
-                setDeckState(updatedDeck)
-                deckRef.current = updatedDeck
-                setPlayPile(updatedPlayPile)
-                playPileRef.current = updatedPlayPile
-            }
-
-            if (newCpuHand.length === 0) {
-                setTimeout(() => {
-                    const points      = tallyPoints(playerHandRef.current)
-                    const newCpuScore = cpuScoreRef.current + points
-                    setCpuScore(newCpuScore)
-                    cpuScoreRef.current = newCpuScore
-                    checkForWinner(playerScoreRef.current, newCpuScore, playerHandRef.current, newCpuHand)
-                }, 1200)
-                return
-            }
-
-            if (chosenCard.changeTurn) {
-                setPlayerTurn(true)
-                playerTurnRef.current = true
-            } else {
-                setTimeout(playCPU, getCpuDelay())
-            }
-        }, 300)
-    }, [drawCardLogic, triggerUno, tallyPoints, checkForWinner, getCpuDelay])
     // #endregion
 
     // #region PLAYER ACTIONS
     const handlePlayerCardClick = useCallback((index: number) => {
-        if (!playerTurnRef.current || colorPickerRef.current || !gameOnRef.current) return
+        if (currentTurnRef.current !== 'player' || colorPickerRef.current || !gameOnRef.current) return
 
-        const currentPlayerHand = [...playerHandRef.current]
-        const currentPlayPile   = [...playPileRef.current]
-        const topCard           = currentPlayPile[currentPlayPile.length - 1]
-        const card              = currentPlayerHand[index]
+        const player = getPlayerById('player')
+        const currentPlayPile = [...playPileRef.current]
+        const topCard = currentPlayPile[currentPlayPile.length - 1]
+        const card = player.hand[index]
 
         const isPlayable =
             card.value === topCard.value ||
             card.color === topCard.color ||
-            card.color === 'any'         ||
+            card.color === 'any' ||
             topCard.color === 'any'
 
         if (!isPlayable) return
 
         audioManager.playCardSound()
 
-        const newPlayerHand = currentPlayerHand.filter((_, i) => i !== index)
-        const playedCard    = { ...card, playedByPlayer: true }
-        const newPlayPile   = [...currentPlayPile, playedCard]
+        const newPlayerHand = player.hand.filter((_, i) => i !== index)
+        const playedCard = { ...card, playedByPlayer: true }
+        const newPlayPile = [...currentPlayPile, playedCard]
 
-        setPlayerHand(newPlayerHand)
-        playerHandRef.current = newPlayerHand
+        const updatedPlayers = playersRef.current.map(p =>
+            p.id === 'player' ? { ...p, hand: newPlayerHand } : p
+        )
+
+        setPlayers(updatedPlayers)
+        playersRef.current = updatedPlayers
         setPlayPile(newPlayPile)
         playPileRef.current = newPlayPile
 
+        // Reset wild card color
         if (playedCard.color !== 'any') {
             setWildCardColor('')
             setSelectedWildColor('')
-            wildCardColorRef.current = ''
             selectedWildColorRef.current = ''
         }
 
-        if (newPlayerHand.length === 1) triggerUno('player')
+        // Check for UNO
+        if (newPlayerHand.length === 1) {
+            triggerUno('player')
+        }
 
+        // Apply draw card penalty to next player
         if (playedCard.drawValue > 0) {
             audioManager.play('plusCard')
-            let updatedCpuHand  = [...cpuHandRef.current]
-            let updatedDeck     = [...deckRef.current]
+            const nextPlayerId = getNextTurn('player')
+            let nextPlayer = getPlayerById(nextPlayerId)
+            let updatedHand = [...nextPlayer.hand]
+            let updatedDeck = [...deckRef.current]
             let updatedPlayPile = [...newPlayPile]
 
             for (let i = 0; i < playedCard.drawValue; i++) {
-                const result    = drawCardLogic(updatedCpuHand, updatedDeck, updatedPlayPile)
-                updatedCpuHand  = result.newHand
-                updatedDeck     = result.newDeck
+                const result = drawCardLogic(updatedHand, updatedDeck, updatedPlayPile)
+                updatedHand = result.newHand
+                updatedDeck = result.newDeck
                 updatedPlayPile = result.newPlayPile
             }
 
-            setCpuHand(updatedCpuHand)
-            cpuHandRef.current = updatedCpuHand
+            const finalUpdatedPlayers = playersRef.current.map(p => {
+                if (p.id === nextPlayerId) return { ...p, hand: updatedHand }
+                return p
+            })
+
+            setPlayers(finalUpdatedPlayers)
+            playersRef.current = finalUpdatedPlayers
             setDeckState(updatedDeck)
             deckRef.current = updatedDeck
             setPlayPile(updatedPlayPile)
             playPileRef.current = updatedPlayPile
         }
 
+        // Check for winner
         if (newPlayerHand.length === 0) {
-            setTimeout(() => {
-                const points         = tallyPoints(cpuHandRef.current)
-                const newPlayerScore = playerScoreRef.current + points
-                setPlayerScore(newPlayerScore)
-                playerScoreRef.current = newPlayerScore
-                checkForWinner(newPlayerScore, cpuScoreRef.current, newPlayerHand, cpuHandRef.current)
-            }, 1200)
+            checkForWinner()
             return
         }
 
+        // Handle wild card
         if (playedCard.color === 'any' && playedCard.drawValue === 0) {
             setColorPickerOpen(true)
             colorPickerRef.current = true
             return
         }
 
-        if (playedCard.changeTurn) {
-            setPlayerTurn(false)
-            playerTurnRef.current = false
-            setTimeout(playCPU, getCpuDelay())
-        }
-    }, [drawCardLogic, triggerUno, tallyPoints, checkForWinner, playCPU, getCpuDelay])
+        // Move to next player
+        const nextTurn = playedCard.changeTurn ? getNextTurn(getNextTurn('player')) : getNextTurn('player')
+        setCurrentTurn(nextTurn)
+        currentTurnRef.current = nextTurn
+    }, [drawCardLogic, triggerUno, checkForWinner])
 
     const handleDrawPileClick = useCallback(() => {
-        // Prevent multiple draws while already drawing
-        if (!playerTurnRef.current || colorPickerRef.current || !gameOnRef.current || isDrawingRef.current) return
-        
-        // Set drawing lock
-        setIsDrawing(true)
-        isDrawingRef.current = true
+        if (currentTurnRef.current !== 'player' || colorPickerRef.current || !gameOnRef.current) return
 
-        const { newHand: newPlayerHand, newDeck, newPlayPile } = drawCardLogic(
-            playerHandRef.current,
+        const player = getPlayerById('player')
+        const { newHand, newDeck, newPlayPile } = drawCardLogic(
+            player.hand,
             deckRef.current,
             playPileRef.current
         )
 
-        setPlayerHand(newPlayerHand)
-        playerHandRef.current = newPlayerHand
+        const updatedPlayers = playersRef.current.map(p =>
+            p.id === 'player' ? { ...p, hand: newHand } : p
+        )
+
+        setPlayers(updatedPlayers)
+        playersRef.current = updatedPlayers
         setDeckState(newDeck)
         deckRef.current = newDeck
         setPlayPile(newPlayPile)
         playPileRef.current = newPlayPile
 
-        setTimeout(() => {
-            setPlayerTurn(false)
-            playerTurnRef.current = false
-            // Release drawing lock after the action is complete
-            setTimeout(() => {
-                setIsDrawing(false)
-                isDrawingRef.current = false
-            }, 500)
-            setTimeout(playCPU, getCpuDelay())
-        }, 500)
-    }, [drawCardLogic, playCPU, getCpuDelay])
+        const nextTurn = getNextTurn('player')
+        setCurrentTurn(nextTurn)
+        currentTurnRef.current = nextTurn
+    }, [drawCardLogic])
 
     const handleColorChosen = useCallback((color: string, colorName: string) => {
         audioManager.play('colorButton')
         const newPlayPile = [...playPileRef.current]
         const lastCard = newPlayPile[newPlayPile.length - 1]
-        
+
         newPlayPile[newPlayPile.length - 1] = {
             ...lastCard,
             color: color,
         }
-        
+
         setPlayPile(newPlayPile)
         playPileRef.current = newPlayPile
         setColorPickerOpen(false)
         colorPickerRef.current = false
-        
+
         setWildCardColor(color)
         setSelectedWildColor(color)
-        wildCardColorRef.current = color
         selectedWildColorRef.current = color
-        
-        const playArea = document.querySelector('.play-area') as HTMLElement
-        if (playArea) {
-            const originalBg = playArea.style.backgroundColor
-            playArea.style.transition = 'background-color 0.3s ease'
-            switch(colorName) {
-                case 'red':
-                    playArea.style.backgroundColor = 'rgba(255, 6, 0, 0.2)'
-                    break
-                case 'green':
-                    playArea.style.backgroundColor = 'rgba(0, 170, 69, 0.2)'
-                    break
-                case 'blue':
-                    playArea.style.backgroundColor = 'rgba(0, 150, 224, 0.2)'
-                    break
-                case 'yellow':
-                    playArea.style.backgroundColor = 'rgba(255, 222, 0, 0.2)'
-                    break
-            }
-            setTimeout(() => {
-                playArea.style.backgroundColor = originalBg || ''
-            }, 500)
-        }
-        
-        setPlayerTurn(false)
-        playerTurnRef.current = false
-        
-        setTimeout(playCPU, getCpuDelay())
-    }, [playCPU, getCpuDelay])
+
+        const nextTurn = getNextTurn('player')
+        setCurrentTurn(nextTurn)
+        currentTurnRef.current = nextTurn
+    }, [])
     // #endregion
 
     // #region PLAY AGAIN
     const handlePlayAgain = useCallback(() => {
         audioManager.play('playAgain')
         setGameVisible(false)
-        setPlayerScore(0)
-        setCpuScore(0)
-        playerScoreRef.current = 0
-        cpuScoreRef.current    = 0
-        setWildCardColor('')
-        setSelectedWildColor('')
-        setIsDrawing(false)
-        isDrawingRef.current = false
-        newHand()
-    }, [newHand])
+        newGame()
+    }, [newGame])
     // #endregion
 
-    // #region DEV MODE
+    // #region AUTO CPU TURN
     useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            const key = e.key.toLowerCase()
-            if (key === 'p') {
-                setPlayerTurn(true)
-                playerTurnRef.current = true
-            }
-            if (key === 'c') {
-                const { newHand: newCpu, newDeck, newPlayPile } = drawCardLogic(
-                    cpuHandRef.current, deckRef.current, playPileRef.current
-                )
-                setCpuHand(newCpu)
-                cpuHandRef.current  = newCpu
-                setDeckState(newDeck)
-                deckRef.current     = newDeck
-                setPlayPile(newPlayPile)
-                playPileRef.current = newPlayPile
-            }
-            if (key === 'x') {
-                const updated = [...playerHandRef.current]
-                updated.pop()
-                setPlayerHand(updated)
-                playerHandRef.current = updated
-            }
-            if (key === 'z') {
-                const updated = [...cpuHandRef.current]
-                updated.pop()
-                setCpuHand(updated)
-                cpuHandRef.current = updated
-            }
-            if (key === 'w') {
-                const wild    = new Card('any', 13, 50, true, 0, '/images/wild13.png')
-                const updated = [...playerHandRef.current, wild]
-                setPlayerHand(updated)
-                playerHandRef.current = updated
-            }
-            if (key === '4') {
-                const wild4   = new Card('any', 14, 50, true, 4, '/images/wild14.png')
-                const updated = [...playerHandRef.current, wild4]
-                setPlayerHand(updated)
-                playerHandRef.current = updated
-            }
-            if (key === '=') {
-                const newScore         = playerScoreRef.current + 10
-                setPlayerScore(newScore)
-                playerScoreRef.current = newScore
-            }
-            if (key === 's') {
-                setCpuVisible(prev => !prev)
-            }
+        if (gameOn && currentTurn !== 'player' && !colorPickerOpen) {
+            playCPU(currentTurn)
         }
-        window.addEventListener('keydown', handleKeyDown)
-        return () => window.removeEventListener('keydown', handleKeyDown)
-    }, [drawCardLogic])
+    }, [currentTurn, gameOn, colorPickerOpen, playCPU])
     // #endregion
 
     // start game on mount
     useEffect(() => {
-        newHand()
+        newGame()
     }, [])
 
-    // cpu auto play
-    useEffect(() => {
-        if (!playerTurn && gameOn) {
-            const timer = setTimeout(playCPU, getCpuDelay())
-            return () => clearTimeout(timer)
-        }
-    }, [playerTurn, gameOn, playCPU, getCpuDelay])
-
     const topCard = playPile[playPile.length - 1]
-    
+
     // Helper to get card name
     const getCardName = (card: CardType) => {
         if (card.color === 'any') {
@@ -737,50 +655,116 @@ export default function UnoGame() {
             14: 'Wild Draw 4'
         }
         const value = valueNames[card.value] || card.value.toString()
-        
+
         if (card.value === 13 && card.color !== 'any') {
             return `${colorNames[card.color]} Wild Card`
         }
-        
+
         return `${colorNames[card.color] || card.color} ${value}`
+    }
+
+    // Helper to get position class
+    const getPositionClass = (position: string) => {
+        switch(position) {
+            case 'top': return 'cpu-top'
+            case 'left': return 'cpu-left'
+            case 'right': return 'cpu-right'
+            default: return ''
+        }
     }
 
     // #region JSX
     return (
-        <main>
-            {/* CPU BOX */}
-            <div className='cpu-box'>
+        <main className="game-container">
+            {/* CPU TOP */}
+            <div className={`cpu-player ${getPositionClass('top')}`}>
+                <div className="cpu-info">
+                    <div className="cpu-name">{getPlayerById('cpu1').name}</div>
+                    <div className="cpu-score">Score: {getPlayerById('cpu1').score}</div>
+                </div>
                 <div className='cpu-hand'>
-                    {cpuHand.map((card, i) => (
+                    {getPlayerById('cpu1').hand.map((card, i) => (
                         <Image
                             key={i}
-                            src={cpuVisible ? card.src : '/images/back.png'}
+                            src={cpuVisible.cpu1 ? card.src : '/images/back.png'}
                             alt='cpu card'
-                            width={80}
-                            height={120}
-                            className='cpu'
+                            width={60}
+                            height={90}
+                            className='cpu-card'
                         />
                     ))}
                 </div>
-                {showUnoCpu && (
-                    <div className='cpu-animation'>
-                        <Image src='/images/uno!.png' alt='UNO!' width={100} height={50} id='cpu-uno' />
+                {showUno.cpu1 && (
+                    <div className='cpu-animation-top'>
+                        <Image src='/images/uno!.png' alt='UNO!' width={80} height={40} />
                     </div>
                 )}
             </div>
 
-            {/* INFO PANEL - Turn and Last Played Card */}
-            <div className='info-panel'>
+            {/* CPU LEFT */}
+            <div className={`cpu-player ${getPositionClass('left')}`}>
+                <div className="cpu-info">
+                    <div className="cpu-name">{getPlayerById('cpu2').name}</div>
+                    <div className="cpu-score">Score: {getPlayerById('cpu2').score}</div>
+                </div>
+                <div className='cpu-hand-vertical'>
+                    {getPlayerById('cpu2').hand.map((card, i) => (
+                        <Image
+                            key={i}
+                            src={cpuVisible.cpu2 ? card.src : '/images/back.png'}
+                            alt='cpu card'
+                            width={90}
+                            height={60}
+                            className='cpu-card-vertical'
+                        />
+                    ))}
+                </div>
+                {showUno.cpu2 && (
+                    <div className='cpu-animation-left'>
+                        <Image src='/images/uno!.png' alt='UNO!' width={80} height={40} />
+                    </div>
+                )}
+            </div>
+
+            {/* CPU RIGHT */}
+            <div className={`cpu-player ${getPositionClass('right')}`}>
+                <div className="cpu-info">
+                    <div className="cpu-name">{getPlayerById('cpu3').name}</div>
+                    <div className="cpu-score">Score: {getPlayerById('cpu3').score}</div>
+                </div>
+                <div className='cpu-hand-vertical'>
+                    {getPlayerById('cpu3').hand.map((card, i) => (
+                        <Image
+                            key={i}
+                            src={cpuVisible.cpu3 ? card.src : '/images/back.png'}
+                            alt='cpu card'
+                            width={90}
+                            height={60}
+                            className='cpu-card-vertical'
+                        />
+                    ))}
+                </div>
+                {showUno.cpu3 && (
+                    <div className='cpu-animation-right'>
+                        <Image src='/images/uno!.png' alt='UNO!' width={80} height={40} />
+                    </div>
+                )}
+            </div>
+
+            {/* CENTER PLAY AREA */}
+            <div className='center-area'>
+                {/* Turn Indicator */}
                 <div className='turn-indicator'>
                     <p className='turn-text'>
-                        {playerTurn ? (
+                        {currentTurn === 'player' ? (
                             <span className='turn-player'>🎮 YOUR TURN 🎮</span>
                         ) : (
-                            <span className='turn-cpu'>🤖 CPU TURN 🤖</span>
+                            <span className='turn-cpu'>🤖 {getPlayerById(currentTurn).name}'s TURN 🤖</span>
                         )}
                     </p>
                 </div>
-                
+
+                {/* Last Played Card Info */}
                 <div className='last-played'>
                     <p>📋 Last Played Card</p>
                     <p className='last-played-card'>
@@ -789,167 +773,88 @@ export default function UnoGame() {
                                 {topCard.playedByPlayer ? '👤 Player played: ' : '🤖 CPU played: '}
                                 {getCardName(topCard)}
                                 {topCard.drawValue > 0 && ` (+${topCard.drawValue})`}
-                                {topCard.value === 13 && topCard.color !== 'any' && (
-                                    <span style={{ 
-                                        display: 'inline-block', 
-                                        marginLeft: '8px', 
-                                        padding: '2px 10px', 
-                                        borderRadius: '20px', 
-                                        fontSize: '11px',
-                                        fontWeight: 'bold',
-                                        backgroundColor: topCard.color === 'rgb(255, 6, 0)' ? '#ff4444' :
-                                                       topCard.color === 'rgb(0, 170, 69)' ? '#4caf50' :
-                                                       topCard.color === 'rgb(0, 150, 224)' ? '#2196f3' :
-                                                       '#ffeb3b',
-                                        color: topCard.color === 'rgb(255, 222, 0)' ? '#333' : 'white',
-                                        animation: 'fadeIn 0.3s ease'
-                                    }}>
-                                        {topCard.color === 'rgb(255, 6, 0)' ? '🔴 RED' :
-                                         topCard.color === 'rgb(0, 170, 69)' ? '🟢 GREEN' :
-                                         topCard.color === 'rgb(0, 150, 224)' ? '🔵 BLUE' :
-                                         '🟡 YELLOW'}
-                                    </span>
-                                )}
                             </>
                         )}
                     </p>
                 </div>
-            </div>
 
-            {/* PLAY AREA */}
-            <div className='play-area'>
-                <div className='score'>
-                    <p
-                        className='cpu-score-title'
-                        style={{ color: !playerTurn ? '#ff9800' : '#fff' }}
-                    >
-                        🤖 CPU SCORE: <span id='cpu-score'>{cpuScore}</span>
-                    </p>
-                    <div id='seperator' />
-                    <p
-                        className='player-score-title'
-                        style={{ color: playerTurn ? '#4caf50' : '#fff' }}
-                    >
-                        🎮 PLAYER SCORE: <span id='player-score'>{playerScore}</span>
-                    </p>
-                    <p className='rules' style={{ color: '#ffd700' }}>
-                        ⚡ First to reach {GAME_OVER_SCORE} points loses ⚡
-                    </p>
-                </div>
+                {/* Play Area Cards */}
+                <div className='table-cards'>
+                    <div className='play-pile'>
+                        {topCard && (
+                            <div style={{ position: 'relative', display: 'inline-block' }}>
+                                <Image
+                                    src={topCard.src}
+                                    alt='play pile'
+                                    width={120}
+                                    height={180}
+                                    style={{
+                                        transition: 'all 0.3s ease',
+                                        borderRadius: '10px',
+                                        boxShadow: (topCard.color !== 'any' && topCard.value === 13 && topCard.drawValue === 0) ?
+                                            (topCard.color === 'rgb(255, 6, 0)' ? '0 0 0 4px rgba(255, 6, 0, 0.8), 0 0 0 8px rgba(255, 6, 0, 0.4), 0 0 20px 5px rgba(255, 6, 0, 0.6)' :
+                                                topCard.color === 'rgb(0, 170, 69)' ? '0 0 0 4px rgba(0, 170, 69, 0.8), 0 0 0 8px rgba(0, 170, 69, 0.4), 0 0 20px 5px rgba(0, 170, 69, 0.6)' :
+                                                    topCard.color === 'rgb(0, 150, 224)' ? '0 0 0 4px rgba(0, 150, 224, 0.8), 0 0 0 8px rgba(0, 150, 224, 0.4), 0 0 20px 5px rgba(0, 150, 224, 0.6)' :
+                                                        '0 0 0 4px rgba(255, 222, 0, 0.8), 0 0 0 8px rgba(255, 222, 0, 0.4), 0 0 20px 5px rgba(255, 222, 0, 0.6)') :
+                                            '0 0.8rem 1.6rem rgba(0, 0, 0, 0.3)',
+                                        transform: (topCard.color !== 'any' && topCard.value === 13 && topCard.drawValue === 0) ? 'scale(1.02)' : 'scale(1)',
+                                    }}
+                                />
+                            </div>
+                        )}
+                    </div>
 
-                {/* PLAY PILE */}
-                <div className='play-pile'>
-                    {topCard && (
-                        <div style={{ position: 'relative', display: 'inline-block' }}>
-                            <Image
-                                src={topCard.src}
-                                alt='play pile'
-                                width={100}
-                                height={150}
-                                style={{
-                                    transition: 'all 0.3s ease',
-                                    borderRadius: '10px',
-                                    boxShadow: (topCard.color !== 'any' && topCard.value === 13 && topCard.drawValue === 0) ? 
-                                        (topCard.color === 'rgb(255, 6, 0)' ? '0 0 0 4px rgba(255, 6, 0, 0.8), 0 0 0 8px rgba(255, 6, 0, 0.4), 0 0 20px 5px rgba(255, 6, 0, 0.6)' :
-                                        topCard.color === 'rgb(0, 170, 69)' ? '0 0 0 4px rgba(0, 170, 69, 0.8), 0 0 0 8px rgba(0, 170, 69, 0.4), 0 0 20px 5px rgba(0, 170, 69, 0.6)' :
-                                        topCard.color === 'rgb(0, 150, 224)' ? '0 0 0 4px rgba(0, 150, 224, 0.8), 0 0 0 8px rgba(0, 150, 224, 0.4), 0 0 20px 5px rgba(0, 150, 224, 0.6)' :
-                                        '0 0 0 4px rgba(255, 222, 0, 0.8), 0 0 0 8px rgba(255, 222, 0, 0.4), 0 0 20px 5px rgba(255, 222, 0, 0.6)') :
-                                        '0 0.8rem 1.6rem rgba(0, 0, 0, 0.3)',
-                                    transform: (topCard.color !== 'any' && topCard.value === 13 && topCard.drawValue === 0) ? 'scale(1.02)' : 'scale(1)',
-                                    border: (topCard.color !== 'any' && topCard.value === 13 && topCard.drawValue === 0) ? '2px solid' : 'none',
-                                    borderColor: topCard.color === 'rgb(255, 6, 0)' ? '#ff4444' :
-                                               topCard.color === 'rgb(0, 170, 69)' ? '#4caf50' :
-                                               topCard.color === 'rgb(0, 150, 224)' ? '#2196f3' :
-                                               topCard.color === 'rgb(255, 222, 0)' ? '#ffeb3b' : 'transparent'
-                                }}
-                            />
-                            {(topCard.color !== 'any' && topCard.value === 13 && topCard.drawValue === 0) && (
-                                <div style={{
-                                    position: 'absolute',
-                                    top: '-8px',
-                                    left: '-8px',
-                                    right: '-8px',
-                                    bottom: '-8px',
-                                    borderRadius: '15px',
-                                    background: `radial-gradient(circle, ${
-                                        topCard.color === 'rgb(255, 6, 0)' ? 'rgba(255, 6, 0, 0.3)' :
-                                        topCard.color === 'rgb(0, 170, 69)' ? 'rgba(0, 170, 69, 0.3)' :
-                                        topCard.color === 'rgb(0, 150, 224)' ? 'rgba(0, 150, 224, 0.3)' :
-                                        'rgba(255, 222, 0, 0.3)'
-                                    }, transparent)`,
-                                    pointerEvents: 'none',
-                                    animation: 'glowPulse 1.5s ease-in-out infinite',
-                                    zIndex: 1
-                                }} />
-                            )}
-                        </div>
-                    )}
-                </div>
-
-                {/* DRAW PILE */}
-                <div 
-                    className='draw-pile' 
-                    onClick={handleDrawPileClick} 
-                    style={{ 
-                        cursor: playerTurn && !colorPickerOpen && gameOn && !isDrawing ? 'pointer' : 'not-allowed',
-                        opacity: playerTurn && !colorPickerOpen && gameOn && !isDrawing ? 1 : 0.6
-                    }}
-                >
-                    <Image
-                        src='/images/back.png'
-                        alt='draw pile'
-                        width={100}
-                        height={150}
-                    />
-                    <div style={{ textAlign: 'center', marginTop: '0.5rem', fontSize: '1.2rem' }}>
-                        🃟 Draw Card
+                    <div className='draw-pile' onClick={handleDrawPileClick} style={{
+                        cursor: currentTurn === 'player' && !colorPickerOpen && gameOn ? 'pointer' : 'not-allowed',
+                        opacity: currentTurn === 'player' && !colorPickerOpen && gameOn ? 1 : 0.6
+                    }}>
+                        <Image
+                            src='/images/back.png'
+                            alt='draw pile'
+                            width={120}
+                            height={180}
+                        />
+                        <div className='draw-text'>Draw Card</div>
                     </div>
                 </div>
+
+                {/* Scores */}
+                <div className='scores'>
+                    {players.map(player => (
+                        <div key={player.id} className={`score-card ${player.id === currentTurn ? 'active-turn' : ''}`}>
+                            <span className='score-name'>{player.name}</span>
+                            <span className='score-value'>{player.score}</span>
+                        </div>
+                    ))}
+                </div>
             </div>
 
-            {/* END OF ROUND */}
-            {roundVisible && (
-                <div className='end-of-round'>
-                    <p className='round'>
-                        {roundWinner === 'player' ? '🎉 You won the round! 🎉' : '😢 CPU won the round... 😢'}
-                    </p>
+            {/* PLAYER BOTTOM */}
+            <div className='player-bottom'>
+                <div className="player-info">
+                    <div className="player-name">YOU</div>
+                    <div className="player-score">Score: {getPlayerById('player').score}</div>
                 </div>
-            )}
-
-            {/* END OF GAME */}
-            {gameVisible && (
-                <div className='end-of-game'>
-                    <p className='game'>
-                        {gameWinner === 'player' ? '🏆 YOU WON THE GAME! 🏆' : '💀 CPU WON THE GAME... 💀'}
-                    </p>
-                    <p style={{ fontSize: '1.4rem', marginBottom: '1rem' }}>
-                        {gameWinner === 'player' ? 'Congratulations!' : 'Better luck next time!'}
-                    </p>
-                    <button className='play-again' onClick={handlePlayAgain}>
-                        🔄 PLAY AGAIN 🔄
-                    </button>
-                </div>
-            )}
-
-            {/* PLAYER BOX */}
-            <div className='player-box'>
                 <div className='player-hand'>
-                    {playerHand.map((card, i) => (
+                    {getPlayerById('player').hand.map((card, i) => (
                         <Image
                             key={i}
                             src={card.src}
                             alt={`card ${i}`}
                             width={80}
                             height={120}
-                            className='player'
+                            className='player-card'
                             onClick={() => handlePlayerCardClick(i)}
-                            style={{ cursor: playerTurn && !colorPickerOpen && gameOn ? 'pointer' : 'not-allowed', opacity: playerTurn && !colorPickerOpen && gameOn ? 1 : 0.6 }}
+                            style={{
+                                cursor: currentTurn === 'player' && !colorPickerOpen && gameOn ? 'pointer' : 'not-allowed',
+                                opacity: currentTurn === 'player' && !colorPickerOpen && gameOn ? 1 : 0.6
+                            }}
                         />
                     ))}
                 </div>
-                {showUnoPlayer && (
+                {showUno.player && (
                     <div className='player-animation'>
-                        <Image src='/images/uno!.png' alt='UNO!' width={100} height={50} id='player-uno' />
+                        <Image src='/images/uno!.png' alt='UNO!' width={100} height={50} />
                     </div>
                 )}
             </div>
@@ -959,39 +864,34 @@ export default function UnoGame() {
                 <div className='color-picker'>
                     <p>🎨 SELECT A COLOR 🎨</p>
                     <div>
-                        <button 
-                            className='red' 
-                            onClick={() => handleColorChosen('rgb(255, 6, 0)', 'red')}
-                            onMouseEnter={() => setWildCardColor('rgb(255, 6, 0)')}
-                            onMouseLeave={() => setWildCardColor(selectedWildColorRef.current)}
-                        >
+                        <button className='red' onClick={() => handleColorChosen('rgb(255, 6, 0)', 'red')}>
                             🔴 RED
                         </button>
-                        <button 
-                            className='green' 
-                            onClick={() => handleColorChosen('rgb(0, 170, 69)', 'green')}
-                            onMouseEnter={() => setWildCardColor('rgb(0, 170, 69)')}
-                            onMouseLeave={() => setWildCardColor(selectedWildColorRef.current)}
-                        >
+                        <button className='green' onClick={() => handleColorChosen('rgb(0, 170, 69)', 'green')}>
                             🟢 GREEN
                         </button>
-                        <button 
-                            className='blue' 
-                            onClick={() => handleColorChosen('rgb(0, 150, 224)', 'blue')}
-                            onMouseEnter={() => setWildCardColor('rgb(0, 150, 224)')}
-                            onMouseLeave={() => setWildCardColor(selectedWildColorRef.current)}
-                        >
+                        <button className='blue' onClick={() => handleColorChosen('rgb(0, 150, 224)', 'blue')}>
                             🔵 BLUE
                         </button>
-                        <button 
-                            className='yellow' 
-                            onClick={() => handleColorChosen('rgb(255, 222, 0)', 'yellow')}
-                            onMouseEnter={() => setWildCardColor('rgb(255, 222, 0)')}
-                            onMouseLeave={() => setWildCardColor(selectedWildColorRef.current)}
-                        >
+                        <button className='yellow' onClick={() => handleColorChosen('rgb(255, 222, 0)', 'yellow')}>
                             🟡 YELLOW
                         </button>
                     </div>
+                </div>
+            )}
+
+            {/* END OF ROUND MODAL */}
+            {roundVisible && (
+                <div className='end-of-round'>
+                    <p>{roundWinner} won the round!</p>
+                </div>
+            )}
+
+            {/* END OF GAME MODAL */}
+            {gameVisible && (
+                <div className='end-of-game'>
+                    <p>{gameWinner} won the game!</p>
+                    <button onClick={handlePlayAgain}>Play Again</button>
                 </div>
             )}
         </main>
