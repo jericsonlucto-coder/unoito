@@ -701,56 +701,67 @@ export default function UnoGame() {
                 )}
             </div>
 
-            {/* CPU LEFT */}
-            <div className={`cpu-player ${getPositionClass('left')}`}>
-                <div className="cpu-info">
-                    <div className="cpu-name">{getPlayerById('cpu2').name}</div>
-                    <div className="cpu-score">Score: {getPlayerById('cpu2').score}</div>
-                </div>
-                <div className='cpu-hand-vertical'>
-                    {getPlayerById('cpu2').hand.map((card, i) => (
-                        <Image
-                            key={i}
-                            src={cpuVisible.cpu2 ? card.src : '/images/back.png'}
-                            alt='cpu card'
-                            width={90}
-                            height={60}
-                            className='cpu-card-vertical'
-                        />
-                    ))}
-                </div>
-                {showUno.cpu2 && (
-                    <div className='cpu-animation-left'>
-                        <Image src='/images/uno!.png' alt='UNO!' width={80} height={40} />
-                    </div>
-                )}
+ {/* CPU LEFT */}
+<div className={`cpu-player ${getPositionClass('left')}`}>
+    <div className="cpu-info">
+        <div className="cpu-name">{getPlayerById('cpu2').name}</div>
+        <div className="cpu-score">Score: {getPlayerById('cpu2').score}</div>
+    </div>
+    <div className='cpu-hand-vertical'>
+        {getPlayerById('cpu2').hand.map((card, i) => (
+            <div key={i} className="cpu-card-wrapper">
+                <Image
+                    src={cpuVisible.cpu2 ? card.src : '/images/back.png'}
+                    alt='cpu card'
+                    width={60}
+                    height={90}
+                    className='cpu-card-vertical'
+                    style={{
+                        display: 'block',
+                        margin: 0,
+                        padding: 0
+                    }}
+                />
             </div>
+        ))}
+    </div>
+    {showUno.cpu2 && (
+        <div className='cpu-animation-left'>
+            <Image src='/images/uno!.png' alt='UNO!' width={80} height={40} />
+        </div>
+    )}
+</div>
 
-            {/* CPU RIGHT */}
-            <div className={`cpu-player ${getPositionClass('right')}`}>
-                <div className="cpu-info">
-                    <div className="cpu-name">{getPlayerById('cpu3').name}</div>
-                    <div className="cpu-score">Score: {getPlayerById('cpu3').score}</div>
-                </div>
-                <div className='cpu-hand-vertical'>
-                    {getPlayerById('cpu3').hand.map((card, i) => (
-                        <Image
-                            key={i}
-                            src={cpuVisible.cpu3 ? card.src : '/images/back.png'}
-                            alt='cpu card'
-                            width={90}
-                            height={60}
-                            className='cpu-card-vertical'
-                        />
-                    ))}
-                </div>
-                {showUno.cpu3 && (
-                    <div className='cpu-animation-right'>
-                        <Image src='/images/uno!.png' alt='UNO!' width={80} height={40} />
-                    </div>
-                )}
+{/* CPU RIGHT */}
+<div className={`cpu-player ${getPositionClass('right')}`}>
+    <div className="cpu-info">
+        <div className="cpu-name">{getPlayerById('cpu3').name}</div>
+        <div className="cpu-score">Score: {getPlayerById('cpu3').score}</div>
+    </div>
+    <div className='cpu-hand-vertical'>
+        {getPlayerById('cpu3').hand.map((card, i) => (
+            <div key={i} className="cpu-card-wrapper">
+                <Image
+                    src={cpuVisible.cpu3 ? card.src : '/images/back.png'}
+                    alt='cpu card'
+                    width={60}
+                    height={90}
+                    className='cpu-card-vertical'
+                    style={{
+                        display: 'block',
+                        margin: 0,
+                        padding: 0
+                    }}
+                />
             </div>
-
+        ))}
+    </div>
+    {showUno.cpu3 && (
+        <div className='cpu-animation-right'>
+            <Image src='/images/uno!.png' alt='UNO!' width={80} height={40} />
+        </div>
+    )}
+</div>
             {/* CENTER PLAY AREA */}
             <div className='center-area'>
                 {/* Turn Indicator */}
