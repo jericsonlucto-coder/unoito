@@ -146,6 +146,7 @@ export default function UnoGame() {
     const [gameVisible,     setGameVisible]     = useState(false)
     const [gameWinner,      setGameWinner]      = useState<'player' | 'cpu' | null>(null)
     const [cpuVisible,      setCpuVisible]      = useState(false)
+    const [wildCardColor,   setWildCardColor]   = useState<string>('') // For wild card visual effect
     // #endregion
 
     // #region REFS
@@ -404,6 +405,9 @@ export default function UnoGame() {
                 }
                 const pickedColor = colors[counts.indexOf(Math.max(...counts))]
                 newPlayPile[newPlayPile.length - 1].color = pickedColor
+                // Show visual effect for CPU's wild card
+                setWildCardColor(pickedColor)
+                setTimeout(() => setWildCardColor(''), 1000)
             }
 
             setPlayPile(newPlayPile)
@@ -560,19 +564,57 @@ export default function UnoGame() {
         }, 500)
     }, [drawCardLogic, playCPU, getCpuDelay])
 
-    const handleColorChosen = useCallback((color: string) => {
+    const handleColorChosen = useCallback((color: string, colorName: string) => {
         audioManager.play('colorButton')
         const newPlayPile = [...playPileRef.current]
+        const lastCard = newPlayPile[newPlayPile.length - 1]
+        
+        // Update the wild card's color
         newPlayPile[newPlayPile.length - 1] = {
-            ...newPlayPile[newPlayPile.length - 1],
-            color,
+            ...lastCard,
+            color: color,
         }
+        
         setPlayPile(newPlayPile)
-        playPileRef.current   = newPlayPile
+        playPileRef.current = newPlayPile
         setColorPickerOpen(false)
         colorPickerRef.current = false
+        
+        // Set the wild card color for visual effect
+        setWildCardColor(color)
+        
+        // Create a temporary flash effect on the play area
+        const playArea = document.querySelector('.play-area') as HTMLElement
+        if (playArea) {
+            const originalBg = playArea.style.backgroundColor
+            playArea.style.transition = 'background-color 0.3s ease'
+            switch(colorName) {
+                case 'red':
+                    playArea.style.backgroundColor = 'rgba(255, 6, 0, 0.2)'
+                    break
+                case 'green':
+                    playArea.style.backgroundColor = 'rgba(0, 170, 69, 0.2)'
+                    break
+                case 'blue':
+                    playArea.style.backgroundColor = 'rgba(0, 150, 224, 0.2)'
+                    break
+                case 'yellow':
+                    playArea.style.backgroundColor = 'rgba(255, 222, 0, 0.2)'
+                    break
+            }
+            setTimeout(() => {
+                playArea.style.backgroundColor = originalBg || ''
+            }, 500)
+        }
+        
         setPlayerTurn(false)
-        playerTurnRef.current  = false
+        playerTurnRef.current = false
+        
+        // Remove the color effect after animation
+        setTimeout(() => {
+            setWildCardColor('')
+        }, 1000)
+        
         setTimeout(playCPU, getCpuDelay())
     }, [playCPU, getCpuDelay])
     // #endregion
@@ -681,6 +723,19 @@ export default function UnoGame() {
         return `${colorNames[card.color] || card.color} ${value}`
     }
 
+    // Helper to get wild card CSS class
+    const getWildCardClass = (card: CardType) => {
+        if (card.color !== 'any' || !wildCardColor) return ''
+        
+        switch(wildCardColor) {
+            case 'rgb(255, 6, 0)': return 'wild-card-red'
+            case 'rgb(0, 170, 69)': return 'wild-card-green'
+            case 'rgb(0, 150, 224)': return 'wild-card-blue'
+            case 'rgb(255, 222, 0)': return 'wild-card-yellow'
+            default: return ''
+        }
+    }
+
     // #region JSX
     return (
         <main>
@@ -755,12 +810,19 @@ export default function UnoGame() {
                 {/* PLAY PILE */}
                 <div className='play-pile'>
                     {topCard && (
-                        <Image
-                            src={topCard.src}
-                            alt='play pile'
-                            width={100}
-                            height={150}
-                        />
+                        <div className={`${topCard.color === 'any' && topCard.drawValue === 0 ? 'wild-card-glow' : ''}`}>
+                            <Image
+                                src={topCard.src}
+                                alt='play pile'
+                                width={100}
+                                height={150}
+                                className={getWildCardClass(topCard)}
+                                style={{
+                                    transition: 'all 0.3s ease',
+                                    borderRadius: '10px'
+                                }}
+                            />
+                        </div>
                     )}
                 </div>
 
@@ -830,10 +892,38 @@ export default function UnoGame() {
                 <div className='color-picker'>
                     <p>🎨 SELECT A COLOR 🎨</p>
                     <div>
-                        <button className='red' onClick={() => handleColorChosen('rgb(255, 6, 0)')}>🔴 RED</button>
-                        <button className='green' onClick={() => handleColorChosen('rgb(0, 170, 69)')}>🟢 GREEN</button>
-                        <button className='blue' onClick={() => handleColorChosen('rgb(0, 150, 224)')}>🔵 BLUE</button>
-                        <button className='yellow' onClick={() => handleColorChosen('rgb(255, 222, 0)')}>🟡 YELLOW</button>
+                        <button 
+                            className='red' 
+                            onClick={() => handleColorChosen('rgb(255, 6, 0)', 'red')}
+                            onMouseEnter={() => setWildCardColor('rgb(255, 6, 0)')}
+                            onMouseLeave={() => setWildCardColor('')}
+                        >
+                            🔴 RED
+                        </button>
+                        <button 
+                            className='green' 
+                            onClick={() => handleColorChosen('rgb(0, 170, 69)', 'green')}
+                            onMouseEnter={() => setWildCardColor('rgb(0, 170, 69)')}
+                            onMouseLeave={() => setWildCardColor('')}
+                        >
+                            🟢 GREEN
+                        </button>
+                        <button 
+                            className='blue' 
+                            onClick={() => handleColorChosen('rgb(0, 150, 224)', 'blue')}
+                            onMouseEnter={() => setWildCardColor('rgb(0, 150, 224)')}
+                            onMouseLeave={() => setWildCardColor('')}
+                        >
+                            🔵 BLUE
+                        </button>
+                        <button 
+                            className='yellow' 
+                            onClick={() => handleColorChosen('rgb(255, 222, 0)', 'yellow')}
+                            onMouseEnter={() => setWildCardColor('rgb(255, 222, 0)')}
+                            onMouseLeave={() => setWildCardColor('')}
+                        >
+                            🟡 YELLOW
+                        </button>
                     </div>
                 </div>
             )}
