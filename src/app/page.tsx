@@ -742,19 +742,19 @@ export default function UnoGame() {
 
     // Helper to get wild card CSS class - uses selectedWildColor for persistent effect
     const getWildCardClass = (card: CardType) => {
-        // Use the stored selectedWildColor for persistent color effect
-        const activeColor = selectedWildColor
-        
-        if (card.color !== 'any' || !activeColor) return ''
-        
-        switch(activeColor) {
-            case 'rgb(255, 6, 0)': return 'wild-card-red'
-            case 'rgb(0, 170, 69)': return 'wild-card-green'
-            case 'rgb(0, 150, 224)': return 'wild-card-blue'
-            case 'rgb(255, 222, 0)': return 'wild-card-yellow'
-            default: return ''
-        }
+    // Use the stored selectedWildColor for persistent color effect
+    const activeColor = selectedWildColor
+    
+    if (card.color !== 'any' || !activeColor) return ''
+    
+    switch(activeColor) {
+        case 'rgb(255, 6, 0)': return 'wild-card-red'
+        case 'rgb(0, 170, 69)': return 'wild-card-green'
+        case 'rgb(0, 150, 224)': return 'wild-card-blue'
+        case 'rgb(255, 222, 0)': return 'wild-card-yellow'
+        default: return ''
     }
+}
 
     // #region JSX
     return (
