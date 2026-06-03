@@ -778,8 +778,8 @@ export default function UnoGame() {
             'rgb(255, 222, 0)': 'Yellow'
         }
         const valueNames: Record<number, string> = {
-            10: 'Skip',
-            11: 'Reverse',
+            10: 'Reverse',
+            11: 'Skip',
             12: 'Draw 2',
             13: 'Wild Card',
             14: 'Wild Draw 4'
