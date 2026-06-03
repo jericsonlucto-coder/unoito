@@ -1,4 +1,4 @@
-/* globals.css - Complete CSS for 4-Player Uno Game with Rotated Cards */
+/* globals.css - Complete CSS for 4-Player Uno Game with Vertical Card Layout */
 
 *,
 *::after,
@@ -99,7 +99,7 @@ body {
     max-width: 80vw;
 }
 
-/* CPU Vertical Hand (Left & Right) - With Rotation */
+/* CPU Vertical Hand (Left & Right) - VERTICAL STACKING */
 .cpu-hand-vertical {
     display: flex;
     flex-direction: column;
@@ -110,41 +110,33 @@ body {
     backdrop-filter: blur(5px);
     max-height: 60vh;
     overflow-y: auto;
+    overflow-x: hidden;
 }
 
-/* Left CPU - Rotate cards to the right (clockwise) */
+/* Left CPU - Rotate cards to the right (clockwise) and stack vertically */
+.cpu-left .cpu-hand-vertical {
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
 .cpu-left .cpu-hand-vertical .cpu-card-vertical {
     transform: rotate(90deg);
     transform-origin: center;
     margin: 1rem 0;
 }
 
-/* Right CPU - Rotate cards to the left (counter-clockwise) */
+/* Right CPU - Rotate cards to the left (counter-clockwise) and stack vertically */
+.cpu-right .cpu-hand-vertical {
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
 .cpu-right .cpu-hand-vertical .cpu-card-vertical {
     transform: rotate(-90deg);
     transform-origin: center;
     margin: 1rem 0;
-}
-
-/* Adjust container for rotated cards */
-.cpu-left .cpu-hand-vertical,
-.cpu-right .cpu-hand-vertical {
-    display: flex;
-    flex-direction: row;
-    justify-content: center;
-    align-items: center;
-    gap: 2rem;
-    padding: 2rem 1rem;
-}
-
-/* For left CPU, stack rotated cards properly */
-.cpu-left .cpu-hand-vertical {
-    flex-direction: row;
-}
-
-/* For right CPU, stack rotated cards properly */
-.cpu-right .cpu-hand-vertical {
-    flex-direction: row;
 }
 
 /* Custom scrollbar for vertical hands */
@@ -192,6 +184,48 @@ body {
 
 .cpu-right .cpu-card-vertical:hover {
     transform: rotate(-90deg) scale(1.05);
+}
+
+/* Ensure images inside rotated divs maintain aspect ratio */
+.cpu-left .cpu-card-vertical img,
+.cpu-right .cpu-card-vertical img {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+
+/* Adjust container width for rotated cards */
+.cpu-left,
+.cpu-right {
+    width: auto;
+    min-width: 100px;
+}
+
+/* Make sure the card container properly stacks vertically */
+.cpu-left .cpu-hand-vertical {
+    max-height: 70vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.cpu-right .cpu-hand-vertical {
+    max-height: 70vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+/* Fix for back card rotation and vertical stacking */
+.cpu-left .cpu-card-vertical,
+.cpu-right .cpu-card-vertical {
+    display: block;
+    width: 70px;
+    height: auto;
 }
 
 /* Center Area */
@@ -920,64 +954,62 @@ body {
     animation: activeGlow 1s ease-in-out infinite;
 }
 
-/* Specific styles for rotated cards to ensure proper spacing */
+/* Ensure vertical stacking for left and right CPUs */
 .cpu-left .cpu-hand-vertical,
 .cpu-right .cpu-hand-vertical {
     display: flex;
-    flex-direction: row;
+    flex-direction: column !important;
     justify-content: center;
     align-items: center;
-    gap: 2rem;
-    padding: 2rem 1rem;
-    min-width: 80px;
+    gap: 1rem;
+    padding: 1.5rem 0.5rem;
+    min-width: 90px;
 }
 
-/* Ensure images inside rotated divs maintain aspect ratio */
-.cpu-left .cpu-card-vertical img,
-.cpu-right .cpu-card-vertical img {
-    width: 100%;
-    height: auto;
-    display: block;
-}
-
-/* Adjust container width for rotated cards */
-.cpu-left,
-.cpu-right {
-    width: auto;
-    min-width: 100px;
-}
-
-/* Make sure the card container doesn't overflow */
-.cpu-left .cpu-hand-vertical {
-    max-height: 70vh;
-    overflow-y: auto;
-    overflow-x: hidden;
-}
-
-.cpu-right .cpu-hand-vertical {
-    max-height: 70vh;
-    overflow-y: auto;
-    overflow-x: hidden;
-}
-
-/* Fix for back card rotation */
+/* Ensure images inside rotated divs maintain aspect ratio and stack properly */
 .cpu-left .cpu-card-vertical,
 .cpu-right .cpu-card-vertical {
     display: block;
     width: 70px;
     height: auto;
+    margin: 0.5rem 0;
+}
+
+/* Make sure the container doesn't overflow */
+.cpu-left .cpu-hand-vertical,
+.cpu-right .cpu-hand-vertical {
+    max-height: 70vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+/* Adjust container width for vertical stacking */
+.cpu-left,
+.cpu-right {
+    width: auto;
+    min-width: 110px;
 }
 
 @media (max-width: 1200px) {
     .cpu-left .cpu-card-vertical,
     .cpu-right .cpu-card-vertical {
-        width: 60px;
+        width: 55px;
+    }
+    
+    .cpu-left,
+    .cpu-right {
+        min-width: 90px;
     }
 }
 
 @media (max-width: 768px) {
     .cpu-left .cpu-card-vertical,
     .cpu-right .cpu-card-vertical {
-        width: 50px;
+        width: 45px;
+    }
+    
+    .cpu-left,
+    .cpu-right {
+        min-width: 70px;
     }
 }
