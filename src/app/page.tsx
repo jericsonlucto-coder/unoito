@@ -182,6 +182,7 @@ const saveRoomsToLocalStorage = (rooms: Map<string, RoomData>) => {
             roomsObj[key] = value
         })
         localStorage.setItem('uno_rooms', JSON.stringify(roomsObj))
+        console.log('💾 Rooms saved to localStorage:', Array.from(rooms.keys()))
     }
 }
 
@@ -195,9 +196,12 @@ const loadRoomsFromLocalStorage = (): Map<string, RoomData> => {
                 Object.entries(roomsObj).forEach(([key, value]) => {
                     rooms.set(key, value)
                 })
+                console.log('📂 Rooms loaded from localStorage:', Array.from(rooms.keys()))
             } catch (e) {
                 console.error('Failed to load rooms from localStorage:', e)
             }
+        } else {
+            console.log('📂 No rooms found in localStorage')
         }
     }
     return rooms
@@ -221,6 +225,7 @@ export default function UnoGame() {
     const [selectedWildColor, setSelectedWildColor] = useState<string>('')
     const [messages, setMessages] = useState<string[]>([])
     const [pusherChannel, setPusherChannel] = useState<any>(null)
+    const [pusherConnection, setPusherConnection] = useState<any>(null)
     const [isHost, setIsHost] = useState(false)
     // #endregion
 
@@ -252,6 +257,7 @@ export default function UnoGame() {
     }
 
     const addMessage = (msg: string) => {
+        console.log('💬 Message:', msg)
         setMessages(prev => [...prev, `${new Date().toLocaleTimeString()} - ${msg}`])
     }
 
@@ -501,9 +507,12 @@ export default function UnoGame() {
 
     // #region MULTIPLAYER FUNCTIONS
     const createMultiplayerRoom = () => {
+        console.log('🏠 Creating multiplayer room...')
         const newRoomId = generateRoomId()
         const newPlayerId = generatePlayerId()
         const newPlayerName = playerName.trim() || `Player_${newPlayerId.slice(-4)}`
+        
+        console.log('📝 Room details:', { roomId: newRoomId, playerId: newPlayerId, playerName: newPlayerName })
         
         setPlayerId(newPlayerId)
         setRoomId(newRoomId)
@@ -530,18 +539,43 @@ export default function UnoGame() {
         saveRoomsToLocalStorage(rooms)
         
         // Initialize Pusher for real-time updates
+        console.log('🔌 Initializing Pusher connection for host...')
         const pusher = new Pusher(PUSHER_CONFIG.key, {
-            cluster: PUSHER_CONFIG.cluster
+            cluster: PUSHER_CONFIG.cluster,
+            enableStats: true
+        })
+        
+        setPusherConnection(pusher)
+        
+        pusher.connection.bind('state_change', (states: any) => {
+            console.log('📡 Pusher connection state:', states.current)
+        })
+        
+        pusher.connection.bind('connected', () => {
+            console.log('✅ Pusher connected successfully!')
+            addMessage('Connected to game server!')
+        })
+        
+        pusher.connection.bind('error', (err: any) => {
+            console.error('❌ Pusher connection error:', err)
+            addMessage('Failed to connect to game server!')
         })
         
         const channel = pusher.subscribe(`game-${newRoomId}`)
         setPusherChannel(channel)
         
         channel.bind('pusher:subscription_succeeded', () => {
-            console.log('Connected to room channel')
+            console.log(`✅ Subscribed to channel: game-${newRoomId}`)
+            addMessage(`Room ${newRoomId} created! Waiting for players...`)
+        })
+        
+        channel.bind('pusher:subscription_error', (error: any) => {
+            console.error('❌ Subscription error:', error)
+            addMessage('Failed to subscribe to room channel!')
         })
         
         channel.bind('client-game-event', (data: GameEvent) => {
+            console.log('📨 Host received game event:', data)
             handleGameEvent(data)
         })
         
@@ -554,26 +588,37 @@ export default function UnoGame() {
     const joinMultiplayerRoom = () => {
         const inputRoomId = roomId.trim().toUpperCase()
         
+        console.log('🔍 Attempting to join room:', inputRoomId)
+        
         if (!inputRoomId) {
+            console.log('❌ No room code entered')
             addMessage('Please enter a room code!')
             return
         }
         
         const rooms = loadRoomsFromLocalStorage()
+        console.log('📂 Available rooms:', Array.from(rooms.keys()))
+        
         const room = rooms.get(inputRoomId)
         
         if (!room) {
+            console.log(`❌ Room "${inputRoomId}" not found in localStorage`)
             addMessage(`Room "${inputRoomId}" not found! Please check the room code.`)
             return
         }
         
+        console.log('✅ Room found:', { roomId: inputRoomId, players: room.players.length, hostId: room.hostId })
+        
         if (room.players.length >= 4) {
+            console.log('❌ Room is full')
             addMessage('Room is full!')
             return
         }
         
         const newPlayerId = generatePlayerId()
         const newPlayerName = playerName.trim() || `Player_${newPlayerId.slice(-4)}`
+        
+        console.log('👤 New player joining:', { playerId: newPlayerId, playerName: newPlayerName })
         
         setPlayerId(newPlayerId)
         setIsHost(false)
@@ -596,26 +641,58 @@ export default function UnoGame() {
         rooms.set(inputRoomId, room)
         saveRoomsToLocalStorage(rooms)
         
+        console.log('✅ Player added to room. Total players:', room.players.length)
+        
         // Initialize Pusher
+        console.log('🔌 Initializing Pusher connection for joiner...')
         const pusher = new Pusher(PUSHER_CONFIG.key, {
-            cluster: PUSHER_CONFIG.cluster
+            cluster: PUSHER_CONFIG.cluster,
+            enableStats: true
+        })
+        
+        setPusherConnection(pusher)
+        
+        pusher.connection.bind('state_change', (states: any) => {
+            console.log('📡 Joiner Pusher connection state:', states.current)
+        })
+        
+        pusher.connection.bind('connected', () => {
+            console.log('✅ Joiner Pusher connected successfully!')
+            addMessage('Connected to game server!')
+            
+            // Notify host about new player after connection is established
+            setTimeout(() => {
+                console.log('📤 Sending PLAYER_JOINED event to host...')
+                channel.trigger('client-game-event', {
+                    type: 'PLAYER_JOINED',
+                    playerId: newPlayerId,
+                    playerName: newPlayerName,
+                    data: { players: room.players }
+                })
+                console.log('✅ PLAYER_JOINED event sent')
+            }, 1000)
+        })
+        
+        pusher.connection.bind('error', (err: any) => {
+            console.error('❌ Joiner Pusher connection error:', err)
+            addMessage('Failed to connect to game server!')
         })
         
         const channel = pusher.subscribe(`game-${inputRoomId}`)
         setPusherChannel(channel)
         
         channel.bind('pusher:subscription_succeeded', () => {
-            console.log('Connected to room channel')
-            // Notify other players after successful connection
-            channel.trigger('client-game-event', {
-                type: 'PLAYER_JOINED',
-                playerId: newPlayerId,
-                playerName: newPlayerName,
-                data: { players: room.players }
-            })
+            console.log(`✅ Joiner subscribed to channel: game-${inputRoomId}`)
+            addMessage(`Connected to room ${inputRoomId}! Waiting for host to start...`)
+        })
+        
+        channel.bind('pusher:subscription_error', (error: any) => {
+            console.error('❌ Joiner subscription error:', error)
+            addMessage('Failed to subscribe to room channel!')
         })
         
         channel.bind('client-game-event', (data: GameEvent) => {
+            console.log('📨 Joiner received game event:', data)
             handleGameEvent(data)
         })
         
@@ -623,15 +700,18 @@ export default function UnoGame() {
         setRoomId(inputRoomId)
         setGameMode('waiting')
         addMessage(`Joined room: ${inputRoomId}`)
+        addMessage(`Players in room: ${room.players.length}/4`)
     }
 
     const handleGameEvent = (event: GameEvent) => {
-        console.log('Game event received:', event)
+        console.log('🎮 Game event handler triggered:', event.type, event)
         
         switch(event.type) {
             case 'PLAYER_JOINED':
+                console.log(`👋 Player joined: ${event.playerName}`)
                 addMessage(`${event.playerName} joined the game`)
                 if (event.data?.players) {
+                    console.log('📋 Updated players list:', event.data.players.map(p => p.name))
                     setPlayers(event.data.players)
                     // Update room in localStorage
                     const rooms = loadRoomsFromLocalStorage()
@@ -640,14 +720,18 @@ export default function UnoGame() {
                         room.players = event.data.players
                         rooms.set(roomId, room)
                         saveRoomsToLocalStorage(rooms)
+                        console.log('💾 Updated room in localStorage')
                     }
                 }
                 break
             case 'PLAYER_LEFT':
+                console.log(`👋 Player left: ${event.playerName}`)
                 addMessage(`${event.playerName} left the game`)
                 break
             case 'START_GAME':
+                console.log('🎮 START_GAME event received!')
                 if (event.data?.gameState) {
+                    console.log('📋 Game state received:', event.data.gameState)
                     setGameState(event.data.gameState)
                     setCurrentTurn(event.data.gameState.currentTurn)
                     setDirection(event.data.gameState.direction)
@@ -656,32 +740,42 @@ export default function UnoGame() {
                 }
                 break
             case 'SYNC_STATE':
+                console.log('🔄 SYNC_STATE event received')
                 if (event.data?.gameState) {
+                    console.log('📋 Syncing game state...')
                     setGameState(event.data.gameState)
                     setCurrentTurn(event.data.gameState.currentTurn)
                     setDirection(event.data.gameState.direction)
                 }
                 break
             default:
+                console.log('❓ Unknown event type:', event.type)
                 break
         }
     }
 
     const startMultiplayerGame = () => {
+        console.log('🚀 Host attempting to start game...')
+        
         const rooms = loadRoomsFromLocalStorage()
         const room = rooms.get(roomId)
         
         if (!room) {
+            console.log('❌ Room not found!')
             addMessage('Room not found!')
             return
         }
         
+        console.log('📊 Room data:', { playerCount: room.players.length, hostId: room.hostId, currentHost: isHost })
+        
         if (room.players.length < 2) {
+            console.log('❌ Not enough players:', room.players.length)
             addMessage('Need at least 2 players to start!')
             return
         }
         
         // Initialize game
+        console.log('🎲 Initializing game...')
         let newDeck = createDeck()
         newDeck = shuffleDeck(newDeck)
         
@@ -720,17 +814,27 @@ export default function UnoGame() {
             winner: null
         }
         
+        console.log('✅ Game state created:', { 
+            players: newGameState.players.map(p => p.name),
+            currentTurn: newGameState.currentTurn,
+            deckSize: newGameState.deck.length
+        })
+        
         room.gameState = newGameState
         rooms.set(roomId, room)
         saveRoomsToLocalStorage(rooms)
         
         // Notify all players
         if (pusherChannel) {
+            console.log('📤 Sending START_GAME event to all players...')
             pusherChannel.trigger('client-game-event', {
                 type: 'START_GAME',
                 playerId: 'system',
                 data: { gameState: newGameState }
             })
+            console.log('✅ START_GAME event sent')
+        } else {
+            console.error('❌ No Pusher channel available!')
         }
         
         setGameState(newGameState)
@@ -741,8 +845,10 @@ export default function UnoGame() {
     }
 
     const leaveRoom = () => {
+        console.log('🚪 Leaving room...')
         if (roomId && pusherChannel) {
             const player = players.find(p => p.id === playerId)
+            console.log('📤 Sending PLAYER_LEFT event...')
             pusherChannel.trigger('client-game-event', {
                 type: 'PLAYER_LEFT',
                 playerId: playerId,
@@ -751,6 +857,10 @@ export default function UnoGame() {
             })
             pusherChannel.unsubscribe()
             
+            if (pusherConnection) {
+                pusherConnection.disconnect()
+            }
+            
             // Remove player from room
             const rooms = loadRoomsFromLocalStorage()
             const room = rooms.get(roomId)
@@ -758,8 +868,10 @@ export default function UnoGame() {
                 room.players = room.players.filter(p => p.id !== playerId)
                 if (room.players.length === 0) {
                     rooms.delete(roomId)
+                    console.log('🗑️ Room deleted (empty)')
                 } else {
                     rooms.set(roomId, room)
+                    console.log('👥 Player removed from room. Remaining players:', room.players.length)
                 }
                 saveRoomsToLocalStorage(rooms)
             }
@@ -769,6 +881,9 @@ export default function UnoGame() {
         setPlayers([])
         setMessages([])
         setIsHost(false)
+        setPusherChannel(null)
+        setPusherConnection(null)
+        console.log('✅ Left room successfully')
     }
     // #endregion
 
@@ -842,6 +957,7 @@ export default function UnoGame() {
         
         // Sync with other players in multiplayer
         if (selectedMode === 'multiplayer' && pusherChannel) {
+            console.log('📤 Syncing game state after card play...')
             pusherChannel.trigger('client-game-event', {
                 type: 'SYNC_STATE',
                 playerId: playerId,
@@ -894,6 +1010,7 @@ export default function UnoGame() {
             
             // Sync with other players in multiplayer
             if (selectedMode === 'multiplayer' && pusherChannel) {
+                console.log('📤 Syncing game state after draw...')
                 pusherChannel.trigger('client-game-event', {
                     type: 'SYNC_STATE',
                     playerId: playerId,
@@ -932,6 +1049,7 @@ export default function UnoGame() {
         
         // Sync with other players in multiplayer
         if (selectedMode === 'multiplayer' && pusherChannel) {
+            console.log('📤 Syncing game state after color choice...')
             pusherChannel.trigger('client-game-event', {
                 type: 'SYNC_STATE',
                 playerId: playerId,
@@ -946,6 +1064,7 @@ export default function UnoGame() {
         const params = new URLSearchParams(window.location.search)
         const room = params.get('room')
         if (room) {
+            console.log('🔗 Detected room in URL:', room)
             setRoomId(room)
             setSelectedMode('multiplayer')
         }
