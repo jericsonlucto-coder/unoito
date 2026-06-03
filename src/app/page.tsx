@@ -148,6 +148,7 @@ export default function UnoGame() {
     const [cpuVisible,      setCpuVisible]      = useState(false)
     const [wildCardColor,   setWildCardColor]   = useState<string>('')
     const [selectedWildColor, setSelectedWildColor] = useState<string>('')
+    const [isDrawing,       setIsDrawing]       = useState(false) // Add this state to prevent double drawing
     // #endregion
 
     // #region REFS
@@ -162,6 +163,7 @@ export default function UnoGame() {
     const playerScoreRef   = useRef(playerScore)
     const wildCardColorRef = useRef(wildCardColor)
     const selectedWildColorRef = useRef(selectedWildColor)
+    const isDrawingRef     = useRef(false) // Add ref for drawing lock
 
     useEffect(() => { playerTurnRef.current  = playerTurn    }, [playerTurn])
     useEffect(() => { gameOnRef.current      = gameOn        }, [gameOn])
@@ -174,6 +176,7 @@ export default function UnoGame() {
     useEffect(() => { playerScoreRef.current = playerScore   }, [playerScore])
     useEffect(() => { wildCardColorRef.current = wildCardColor }, [wildCardColor])
     useEffect(() => { selectedWildColorRef.current = selectedWildColor }, [selectedWildColor])
+    useEffect(() => { isDrawingRef.current = isDrawing }, [isDrawing])
     // #endregion
 
     // #region AUDIO INIT
@@ -232,6 +235,8 @@ export default function UnoGame() {
         colorPickerRef.current = false
         setWildCardColor('')
         setSelectedWildColor('')
+        setIsDrawing(false)
+        isDrawingRef.current = false
 
         let newDeck = createDeck()
         newDeck = shuffleDeck(newDeck)
@@ -543,7 +548,12 @@ export default function UnoGame() {
     }, [drawCardLogic, triggerUno, tallyPoints, checkForWinner, playCPU, getCpuDelay])
 
     const handleDrawPileClick = useCallback(() => {
-        if (!playerTurnRef.current || colorPickerRef.current || !gameOnRef.current) return
+        // Prevent multiple draws while already drawing
+        if (!playerTurnRef.current || colorPickerRef.current || !gameOnRef.current || isDrawingRef.current) return
+        
+        // Set drawing lock
+        setIsDrawing(true)
+        isDrawingRef.current = true
 
         const { newHand: newPlayerHand, newDeck, newPlayPile } = drawCardLogic(
             playerHandRef.current,
@@ -561,6 +571,11 @@ export default function UnoGame() {
         setTimeout(() => {
             setPlayerTurn(false)
             playerTurnRef.current = false
+            // Release drawing lock after the action is complete
+            setTimeout(() => {
+                setIsDrawing(false)
+                isDrawingRef.current = false
+            }, 500)
             setTimeout(playCPU, getCpuDelay())
         }, 500)
     }, [drawCardLogic, playCPU, getCpuDelay])
@@ -625,6 +640,8 @@ export default function UnoGame() {
         cpuScoreRef.current    = 0
         setWildCardColor('')
         setSelectedWildColor('')
+        setIsDrawing(false)
+        isDrawingRef.current = false
         newHand()
     }, [newHand])
     // #endregion
@@ -870,7 +887,14 @@ export default function UnoGame() {
                 </div>
 
                 {/* DRAW PILE */}
-                <div className='draw-pile' onClick={handleDrawPileClick} style={{ cursor: 'pointer' }}>
+                <div 
+                    className='draw-pile' 
+                    onClick={handleDrawPileClick} 
+                    style={{ 
+                        cursor: playerTurn && !colorPickerOpen && gameOn && !isDrawing ? 'pointer' : 'not-allowed',
+                        opacity: playerTurn && !colorPickerOpen && gameOn && !isDrawing ? 1 : 0.6
+                    }}
+                >
                     <Image
                         src='/images/back.png'
                         alt='draw pile'
