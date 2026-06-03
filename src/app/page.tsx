@@ -6,15 +6,9 @@ import Pusher from 'pusher-js'
 
 // #region PUSHER CONFIG
 const PUSHER_CONFIG = {
-    appId: "2162488",
     key: "4de6e91a5e72dd9096db",
-    secret: "b9c26ec9196d0338ba7a",
     cluster: "ap1"
 }
-
-// Initialize Pusher
-let pusher: Pusher | null = null
-let channel: any = null
 
 // #endregion
 
@@ -51,9 +45,10 @@ interface GameState {
     winner: string | null
 }
 
-interface GameMessage {
-    type: 'PLAY_CARD' | 'DRAW_CARD' | 'COLOR_CHOSEN' | 'UNO' | 'PLAYER_READY' | 'PLAYER_JOINED' | 'PLAYER_LEFT'
+interface GameEvent {
+    type: 'PLAY_CARD' | 'DRAW_CARD' | 'COLOR_CHOSEN' | 'UNO' | 'PLAYER_READY' | 'PLAYER_JOINED' | 'PLAYER_LEFT' | 'START_GAME'
     playerId: string
+    playerName?: string
     data: any
 }
 // #endregion
@@ -172,6 +167,13 @@ class AudioManager {
 const audioManager = new AudioManager()
 // #endregion
 
+// Storage for game rooms (in memory)
+const gameRooms: Map<string, {
+    players: Player[]
+    gameState: GameState | null
+    createdAt: number
+}> = new Map()
+
 export default function UnoGame() {
 
     // #region STATE
@@ -180,6 +182,7 @@ export default function UnoGame() {
     const [playerCount, setPlayerCount] = useState<2 | 3 | 4>(2)
     const [roomId, setRoomId] = useState<string>('')
     const [playerId, setPlayerId] = useState<string>('')
+    const [playerName, setPlayerName] = useState<string>('')
     const [players, setPlayers] = useState<Player[]>([])
     const [gameState, setGameState] = useState<GameState | null>(null)
     const [currentTurn, setCurrentTurn] = useState<string>('')
@@ -188,6 +191,7 @@ export default function UnoGame() {
     const [colorPickerOpen, setColorPickerOpen] = useState(false)
     const [selectedWildColor, setSelectedWildColor] = useState<string>('')
     const [messages, setMessages] = useState<string[]>([])
+    const [pusherChannel, setPusherChannel] = useState<any>(null)
     // #endregion
 
     // #region REFS
@@ -213,8 +217,18 @@ export default function UnoGame() {
         return Math.random().toString(36).substring(2, 8).toUpperCase()
     }
 
+    const generatePlayerId = () => {
+        return `player_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`
+    }
+
     const addMessage = (msg: string) => {
         setMessages(prev => [...prev, `${new Date().toLocaleTimeString()} - ${msg}`])
+    }
+
+    const copyInviteLink = () => {
+        const link = `${window.location.origin}?room=${roomId}`
+        navigator.clipboard.writeText(link)
+        addMessage('Invite link copied to clipboard!')
     }
 
     const getNextTurn = (current: string, currentDirection: 'clockwise' | 'counter-clockwise', playerList: Player[]): string => {
@@ -272,6 +286,73 @@ export default function UnoGame() {
         isOnline: true
     })
 
+    const startAIGame = async () => {
+        const newGameId = generateRoomId()
+        const newPlayerId = generatePlayerId()
+        const newPlayerName = playerName || `Player_${newPlayerId.slice(-4)}`
+        
+        setPlayerId(newPlayerId)
+        setRoomId(newGameId)
+        
+        let newDeck = createDeck()
+        newDeck = shuffleDeck(newDeck)
+        
+        const playersList: Player[] = [
+            {
+                id: newPlayerId,
+                name: newPlayerName,
+                hand: [],
+                score: 0,
+                position: 'bottom',
+                isReady: true,
+                isOnline: true
+            }
+        ]
+        
+        // Add AI players based on selected count
+        const aiPositions = ['top', 'left', 'right'] as const
+        for (let i = 0; i < playerCount - 1; i++) {
+            playersList.push(createAIPlayer(
+                `ai_${i}`,
+                `CPU ${aiPositions[i].toUpperCase()}`,
+                aiPositions[i]
+            ))
+        }
+        
+        // Deal 7 cards to each player
+        for (let i = 0; i < 7; i++) {
+            for (let j = 0; j < playersList.length; j++) {
+                playersList[j].hand.push(newDeck.shift()!)
+            }
+        }
+        
+        // Find first valid start card
+        let startCard: CardType | null = null
+        for (let i = 0; i < newDeck.length; i++) {
+            if (newDeck[i].color !== 'any' && newDeck[i].value <= 9) {
+                startCard = newDeck.splice(i, 1)[0]
+                break
+            }
+        }
+        
+        const newGameState: GameState = {
+            gameId: newGameId,
+            players: playersList,
+            currentTurn: newPlayerId,
+            deck: newDeck,
+            playPile: startCard ? [startCard] : [],
+            direction: 'clockwise',
+            gameStarted: true,
+            winner: null
+        }
+        
+        setGameState(newGameState)
+        setPlayers(playersList)
+        setCurrentTurn(newPlayerId)
+        setGameMode('playing')
+        addMessage('Game started! Good luck!')
+    }
+
     const playAITurn = useCallback(async () => {
         if (!gameStateRef.current || currentTurnRef.current === playerId) return
 
@@ -294,7 +375,9 @@ export default function UnoGame() {
             // Draw a card
             const newDeck = [...gameStateRef.current.deck]
             const newPlayPile = [...gameStateRef.current.playPile]
-            const drawnCard = newDeck.shift()!
+            const drawnCard = newDeck.shift()
+            if (!drawnCard) return
+            
             const newHand = [...aiPlayer.hand, drawnCard]
             
             const updatedPlayers = gameStateRef.current.players.map(p =>
@@ -323,7 +406,7 @@ export default function UnoGame() {
         audioManager.playCardSound()
         
         let newDirection = directionRef.current
-        if (playedCard.value === 10) { // Reverse card
+        if (playedCard.value === 10) {
             newDirection = directionRef.current === 'clockwise' ? 'counter-clockwise' : 'clockwise'
             setDirection(newDirection)
         }
@@ -334,21 +417,32 @@ export default function UnoGame() {
         
         let nextTurn = getNextTurn(aiPlayer.id, newDirection, updatedPlayers)
         
-        if (playedCard.value === 11) { // Skip card
+        if (playedCard.value === 11) {
             nextTurn = getNextTurn(nextTurn, newDirection, updatedPlayers)
         }
         
         if (playedCard.drawValue > 0) {
             const nextPlayer = updatedPlayers.find(p => p.id === nextTurn)!
-            const drawnCards = []
+            const newDeck = [...gameStateRef.current.deck]
             for (let i = 0; i < playedCard.drawValue; i++) {
-                const card = gameStateRef.current.deck.shift()!
-                drawnCards.push(card)
+                const card = newDeck.shift()
+                if (card) nextPlayer.hand.push(card)
             }
-            nextPlayer.hand.push(...drawnCards)
             addMessage(`${aiPlayer.name} played ${getCardName(playedCard)} and ${nextPlayer.name} drew ${playedCard.drawValue} cards`)
+            setGameState({
+                ...gameStateRef.current,
+                players: updatedPlayers,
+                playPile: newPlayPile,
+                deck: newDeck
+            })
         } else {
             addMessage(`${aiPlayer.name} played ${getCardName(playedCard)}`)
+            setGameState({
+                ...gameStateRef.current,
+                players: updatedPlayers,
+                playPile: newPlayPile,
+                deck: gameStateRef.current.deck
+            })
         }
         
         if (newHand.length === 1) {
@@ -358,15 +452,8 @@ export default function UnoGame() {
         
         if (newHand.length === 0) {
             addMessage(`${aiPlayer.name} won the round!`)
-            // Handle round win logic
         }
         
-        setGameState({
-            ...gameStateRef.current,
-            players: updatedPlayers,
-            playPile: newPlayPile,
-            deck: gameStateRef.current.deck
-        })
         setDirection(newDirection)
         setCurrentTurn(nextTurn)
     }, [playerId])
@@ -381,46 +468,163 @@ export default function UnoGame() {
     }, [currentTurn, gameMode, gameState, playAITurn, playerId])
     // #endregion
 
-    // #region GAME INITIALIZATION
-    const startAIGame = async () => {
-        const newGameId = generateRoomId()
-        const newPlayerId = `player_${Date.now()}`
-        setPlayerId(newPlayerId)
-        setRoomId(newGameId)
+    // #region MULTIPLAYER FUNCTIONS
+    const createMultiplayerRoom = async () => {
+        const newRoomId = generateRoomId()
+        const newPlayerId = generatePlayerId()
+        const newPlayerName = playerName || `Player_${newPlayerId.slice(-4)}`
         
+        setPlayerId(newPlayerId)
+        setRoomId(newRoomId)
+        
+        // Store room in memory
+        const newPlayer: Player = {
+            id: newPlayerId,
+            name: newPlayerName,
+            hand: [],
+            score: 0,
+            position: 'bottom',
+            isReady: true,
+            isOnline: true
+        }
+        
+        gameRooms.set(newRoomId, {
+            players: [newPlayer],
+            gameState: null,
+            createdAt: Date.now()
+        })
+        
+        // Initialize Pusher
+        const pusher = new Pusher(PUSHER_CONFIG.key, {
+            cluster: PUSHER_CONFIG.cluster
+        })
+        
+        const channel = pusher.subscribe(`game-${newRoomId}`)
+        setPusherChannel(channel)
+        
+        channel.bind('game-event', (data: GameEvent) => {
+            handleGameEvent(data)
+        })
+        
+        setPlayers([newPlayer])
+        setGameMode('waiting')
+        addMessage(`Room created! Room code: ${newRoomId}`)
+        addMessage(`Share this code with friends to join!`)
+    }
+
+    const joinMultiplayerRoom = async () => {
+        if (!roomId) {
+            addMessage('Please enter a room code!')
+            return
+        }
+        
+        const room = gameRooms.get(roomId.toUpperCase())
+        if (!room) {
+            addMessage('Room not found! Please check the room code.')
+            return
+        }
+        
+        if (room.players.length >= 4) {
+            addMessage('Room is full!')
+            return
+        }
+        
+        const newPlayerId = generatePlayerId()
+        const newPlayerName = playerName || `Player_${newPlayerId.slice(-4)}`
+        
+        setPlayerId(newPlayerId)
+        
+        // Add player to room
+        const positions = ['right', 'top', 'left'] as const
+        const position = positions[room.players.length - 1] || 'right'
+        
+        const newPlayer: Player = {
+            id: newPlayerId,
+            name: newPlayerName,
+            hand: [],
+            score: 0,
+            position: position,
+            isReady: true,
+            isOnline: true
+        }
+        
+        room.players.push(newPlayer)
+        gameRooms.set(roomId.toUpperCase(), room)
+        
+        // Initialize Pusher
+        const pusher = new Pusher(PUSHER_CONFIG.key, {
+            cluster: PUSHER_CONFIG.cluster
+        })
+        
+        const channel = pusher.subscribe(`game-${roomId.toUpperCase()}`)
+        setPusherChannel(channel)
+        
+        channel.bind('game-event', (data: GameEvent) => {
+            handleGameEvent(data)
+        })
+        
+        // Notify other players
+        channel.trigger('client-game-event', {
+            type: 'PLAYER_JOINED',
+            playerId: newPlayerId,
+            playerName: newPlayerName,
+            data: { players: room.players }
+        })
+        
+        setPlayers(room.players)
+        setGameMode('waiting')
+        addMessage(`Joined room: ${roomId.toUpperCase()}`)
+    }
+
+    const handleGameEvent = (event: GameEvent) => {
+        switch(event.type) {
+            case 'PLAYER_JOINED':
+                addMessage(`${event.playerName} joined the game`)
+                if (event.data?.players) {
+                    setPlayers(event.data.players)
+                }
+                break
+            case 'PLAYER_LEFT':
+                addMessage(`${event.playerName} left the game`)
+                break
+            case 'START_GAME':
+                if (event.data?.gameState) {
+                    setGameState(event.data.gameState)
+                    setCurrentTurn(event.data.gameState.currentTurn)
+                    setDirection(event.data.gameState.direction)
+                    setGameMode('playing')
+                    addMessage('Game started! Good luck!')
+                }
+                break
+            default:
+                break
+        }
+    }
+
+    const startMultiplayerGame = () => {
+        const room = gameRooms.get(roomId)
+        if (!room || room.players.length < 2) {
+            addMessage('Need at least 2 players to start!')
+            return
+        }
+        
+        // Initialize game
         let newDeck = createDeck()
         newDeck = shuffleDeck(newDeck)
         
-        const players: Player[] = [
-            {
-                id: newPlayerId,
-                name: 'YOU',
-                hand: [],
-                score: 0,
-                position: 'bottom',
-                isReady: true,
-                isOnline: true
-            }
-        ]
+        // Deal cards
+        const playersWithHands = room.players.map(player => ({
+            ...player,
+            hand: []
+        }))
         
-        // Add AI players based on selected count
-        const aiPositions = ['top', 'left', 'right'] as const
-        for (let i = 0; i < playerCount - 1; i++) {
-            players.push(createAIPlayer(
-                `ai_${i}`,
-                `CPU ${aiPositions[i].toUpperCase()}`,
-                aiPositions[i]
-            ))
-        }
-        
-        // Deal 7 cards to each player
         for (let i = 0; i < 7; i++) {
-            for (let j = 0; j < players.length; j++) {
-                players[j].hand.push(newDeck.shift()!)
+            for (let j = 0; j < playersWithHands.length; j++) {
+                playersWithHands[j].hand.push(newDeck.shift()!)
             }
         }
         
-        // Find first valid start card
+        // Find start card
         let startCard: CardType | null = null
         for (let i = 0; i < newDeck.length; i++) {
             if (newDeck[i].color !== 'any' && newDeck[i].value <= 9) {
@@ -430,9 +634,9 @@ export default function UnoGame() {
         }
         
         const newGameState: GameState = {
-            gameId: newGameId,
-            players,
-            currentTurn: newPlayerId,
+            gameId: roomId,
+            players: playersWithHands,
+            currentTurn: playersWithHands[0].id,
             deck: newDeck,
             playPile: startCard ? [startCard] : [],
             direction: 'clockwise',
@@ -440,121 +644,39 @@ export default function UnoGame() {
             winner: null
         }
         
+        room.gameState = newGameState
+        gameRooms.set(roomId, room)
+        
+        // Notify all players
+        if (pusherChannel) {
+            pusherChannel.trigger('client-game-event', {
+                type: 'START_GAME',
+                playerId: 'system',
+                data: { gameState: newGameState }
+            })
+        }
+        
         setGameState(newGameState)
-        setPlayers(players)
-        setCurrentTurn(newPlayerId)
+        setCurrentTurn(newGameState.currentTurn)
+        setDirection(newGameState.direction)
         setGameMode('playing')
         addMessage('Game started! Good luck!')
     }
 
-    const createMultiplayerRoom = async () => {
-        const newRoomId = generateRoomId()
-        const newPlayerId = `player_${Date.now()}`
-        setPlayerId(newPlayerId)
-        setRoomId(newRoomId)
-        
-        // Initialize Pusher for multiplayer
-        pusher = new Pusher(PUSHER_CONFIG.key, {
-            cluster: PUSHER_CONFIG.cluster
-        })
-        
-        channel = pusher.subscribe(`game_${newRoomId}`)
-        
-        channel.bind('game_event', (data: GameMessage) => {
-            handleGameEvent(data)
-        })
-        
-        // Create room via HTTP API
-        try {
-            const response = await fetch('https://api.pusher.com/apps/2162488/events', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    name: 'create_room',
-                    data: {
-                        roomId: newRoomId,
-                        playerId: newPlayerId,
-                        playerCount
-                    },
-                    channel: `game_${newRoomId}`
-                })
+    const leaveRoom = () => {
+        if (roomId && pusherChannel) {
+            pusherChannel.trigger('client-game-event', {
+                type: 'PLAYER_LEFT',
+                playerId: playerId,
+                playerName: players.find(p => p.id === playerId)?.name,
+                data: {}
             })
-            
-            if (response.ok) {
-                setGameMode('waiting')
-                addMessage(`Room created! Share code: ${newRoomId}`)
-            }
-        } catch (error) {
-            console.error('Failed to create room:', error)
+            pusherChannel.unsubscribe()
         }
-    }
-
-    const joinMultiplayerRoom = async () => {
-        if (!roomId) return
-        
-        const newPlayerId = `player_${Date.now()}`
-        setPlayerId(newPlayerId)
-        
-        pusher = new Pusher(PUSHER_CONFIG.key, {
-            cluster: PUSHER_CONFIG.cluster
-        })
-        
-        channel = pusher.subscribe(`game_${roomId}`)
-        
-        channel.bind('game_event', (data: GameMessage) => {
-            handleGameEvent(data)
-        })
-        
-        try {
-            const response = await fetch('https://api.pusher.com/apps/2162488/events', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    name: 'join_room',
-                    data: {
-                        roomId,
-                        playerId: newPlayerId
-                    },
-                    channel: `game_${roomId}`
-                })
-            })
-            
-            if (response.ok) {
-                setGameMode('waiting')
-                addMessage(`Joined room: ${roomId}`)
-            }
-        } catch (error) {
-            console.error('Failed to join room:', error)
-        }
-    }
-
-    const handleGameEvent = (event: GameMessage) => {
-        switch(event.type) {
-            case 'PLAYER_JOINED':
-                addMessage(`${event.data.playerName} joined the game`)
-                break
-            case 'PLAYER_READY':
-                addMessage(`${event.data.playerName} is ready`)
-                break
-            case 'PLAY_CARD':
-                // Handle card play from other players
-                break
-            case 'DRAW_CARD':
-                // Handle draw from other players
-                break
-            default:
-                break
-        }
-    }
-
-    const sendGameEvent = (event: GameMessage) => {
-        if (channel) {
-            channel.trigger('client-game_event', event)
-        }
+        setGameMode('menu')
+        setRoomId('')
+        setPlayers([])
+        setMessages([])
     }
     // #endregion
 
@@ -579,7 +701,7 @@ export default function UnoGame() {
         const newPlayPile = [...gameState.playPile, playedCard]
         
         let newDirection = direction
-        if (card.value === 10) { // Reverse card
+        if (card.value === 10) {
             newDirection = direction === 'clockwise' ? 'counter-clockwise' : 'clockwise'
             setDirection(newDirection)
         }
@@ -590,18 +712,18 @@ export default function UnoGame() {
         
         let nextTurn = getNextTurn(playerId, newDirection, updatedPlayers)
         
-        if (card.value === 11) { // Skip card
+        if (card.value === 11) {
             nextTurn = getNextTurn(nextTurn, newDirection, updatedPlayers)
         }
         
+        let newDeck = [...gameState.deck]
+        
         if (card.drawValue > 0) {
             const nextPlayer = updatedPlayers.find(p => p.id === nextTurn)!
-            const drawnCards = []
             for (let i = 0; i < card.drawValue; i++) {
-                const drawnCard = gameState.deck.shift()!
-                drawnCards.push(drawnCard)
+                const drawnCard = newDeck.shift()
+                if (drawnCard) nextPlayer.hand.push(drawnCard)
             }
-            nextPlayer.hand.push(...drawnCards)
             addMessage(`You played ${getCardName(card)} and ${nextPlayer.name} drew ${card.drawValue} cards`)
         } else {
             addMessage(`You played ${getCardName(card)}`)
@@ -616,7 +738,7 @@ export default function UnoGame() {
             ...gameState,
             players: updatedPlayers,
             playPile: newPlayPile,
-            deck: gameState.deck
+            deck: newDeck
         })
         setCurrentTurn(nextTurn)
         
@@ -629,7 +751,10 @@ export default function UnoGame() {
         if (!gameState || currentTurn !== playerId || colorPickerOpen) return
         
         const player = gameState.players.find(p => p.id === playerId)!
-        const drawnCard = gameState.deck.shift()!
+        const newDeck = [...gameState.deck]
+        const drawnCard = newDeck.shift()
+        if (!drawnCard) return
+        
         const newHand = [...player.hand, drawnCard]
         
         const updatedPlayers = gameState.players.map(p =>
@@ -642,7 +767,7 @@ export default function UnoGame() {
         setGameState({
             ...gameState,
             players: updatedPlayers,
-            deck: gameState.deck
+            deck: newDeck
         })
         
         // Check if drawn card can be played
@@ -676,6 +801,17 @@ export default function UnoGame() {
     }
     // #endregion
 
+    // #region URL PARAM HANDLER
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search)
+        const room = params.get('room')
+        if (room) {
+            setRoomId(room)
+            setSelectedMode('multiplayer')
+        }
+    }, [])
+    // #endregion
+
     // #region RENDER COMPONENTS
     const renderMenu = () => (
         <div className="menu-container" style={{
@@ -700,6 +836,26 @@ export default function UnoGame() {
                 <h1 style={{ fontSize: '3rem', color: '#ffd700', marginBottom: '2rem' }}>
                     🃏 UNO Multiplayer
                 </h1>
+                
+                <div style={{ marginBottom: '2rem' }}>
+                    <input
+                        type="text"
+                        placeholder="Enter your name"
+                        value={playerName}
+                        onChange={(e) => setPlayerName(e.target.value)}
+                        style={{
+                            padding: '1rem',
+                            fontSize: '1.1rem',
+                            width: '100%',
+                            marginBottom: '1rem',
+                            borderRadius: '0.5rem',
+                            border: '1px solid #ffd700',
+                            background: 'rgba(255,255,255,0.1)',
+                            color: 'white',
+                            textAlign: 'center'
+                        }}
+                    />
+                </div>
                 
                 <div style={{ marginBottom: '2rem' }}>
                     <button
@@ -856,29 +1012,53 @@ export default function UnoGame() {
                 textAlign: 'center',
                 backdropFilter: 'blur(10px)',
                 border: '2px solid #ffd700',
-                maxWidth: '500px',
+                maxWidth: '600px',
                 width: '100%'
             }}>
                 <h2 style={{ fontSize: '2rem', color: '#ffd700', marginBottom: '1rem' }}>
-                    🎲 Waiting for Players
+                    🎲 Waiting Room
                 </h2>
-                <p style={{ fontSize: '1.5rem', marginBottom: '1rem' }}>
-                    Room Code: <strong style={{ color: '#4caf50' }}>{roomId}</strong>
-                </p>
-                <p style={{ fontSize: '1rem', marginBottom: '2rem' }}>
-                    Share this code with friends to join!
-                </p>
+                
+                <div style={{
+                    background: 'rgba(0,0,0,0.5)',
+                    padding: '1rem',
+                    borderRadius: '0.5rem',
+                    marginBottom: '1rem'
+                }}>
+                    <p style={{ fontSize: '1.2rem' }}>
+                        Room Code: <strong style={{ color: '#4caf50', fontSize: '1.5rem' }}>{roomId}</strong>
+                    </p>
+                    <button
+                        onClick={copyInviteLink}
+                        style={{
+                            marginTop: '0.5rem',
+                            padding: '0.5rem 1rem',
+                            background: '#2196f3',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '0.5rem',
+                            cursor: 'pointer'
+                        }}
+                    >
+                        📋 Copy Invite Link
+                    </button>
+                </div>
                 
                 <div className="players-list" style={{ marginBottom: '2rem' }}>
-                    <h3>Players in Room:</h3>
+                    <h3>Players ({players.length}/4):</h3>
                     {players.map(player => (
                         <div key={player.id} style={{
                             padding: '0.5rem',
                             margin: '0.5rem 0',
                             background: 'rgba(255,255,255,0.1)',
-                            borderRadius: '0.5rem'
+                            borderRadius: '0.5rem',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center'
                         }}>
-                            {player.name} {player.isReady ? '✅' : '⏳'}
+                            <span>{player.name}</span>
+                            <span>{player.id === playerId ? '(You)' : ''}</span>
+                            <span>{player.isReady ? '✅ Ready' : '⏳ Waiting'}</span>
                         </div>
                     ))}
                 </div>
@@ -890,34 +1070,47 @@ export default function UnoGame() {
                     padding: '1rem',
                     borderRadius: '0.5rem',
                     marginBottom: '1rem',
-                    fontSize: '0.9rem'
+                    fontSize: '0.9rem',
+                    textAlign: 'left'
                 }}>
                     {messages.map((msg, i) => (
                         <div key={i}>{msg}</div>
                     ))}
                 </div>
                 
-                <button
-                    onClick={() => {
-                        // Start game when ready
-                        if (players.length === playerCount) {
-                            // Initialize game
-                        }
-                    }}
-                    style={{
-                        padding: '1rem 2rem',
-                        fontSize: '1.2rem',
-                        background: players.length === playerCount ? '#4caf50' : '#666',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '0.5rem',
-                        cursor: players.length === playerCount ? 'pointer' : 'not-allowed',
-                        width: '100%'
-                    }}
-                    disabled={players.length !== playerCount}
-                >
-                    {players.length === playerCount ? 'Start Game 🚀' : `Waiting for ${playerCount - players.length} more player(s)...`}
-                </button>
+                <div style={{ display: 'flex', gap: '1rem' }}>
+                    <button
+                        onClick={startMultiplayerGame}
+                        style={{
+                            flex: 1,
+                            padding: '1rem 2rem',
+                            fontSize: '1.2rem',
+                            background: players.length >= 2 ? '#4caf50' : '#666',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '0.5rem',
+                            cursor: players.length >= 2 ? 'pointer' : 'not-allowed'
+                        }}
+                        disabled={players.length < 2}
+                    >
+                        {players.length >= 2 ? 'Start Game 🚀' : `Waiting for ${2 - players.length} more player(s)...`}
+                    </button>
+                    
+                    <button
+                        onClick={leaveRoom}
+                        style={{
+                            padding: '1rem 2rem',
+                            fontSize: '1.2rem',
+                            background: '#dc3545',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '0.5rem',
+                            cursor: 'pointer'
+                        }}
+                    >
+                        Leave Room
+                    </button>
+                </div>
             </div>
         </div>
     )
@@ -930,11 +1123,11 @@ export default function UnoGame() {
         
         return (
             <main className="game-container">
-                {/* CPU/Other Players */}
-                {gameState.players.filter(p => p.id !== playerId).map((player, index) => (
+                {/* Other Players */}
+                {gameState.players.filter(p => p.id !== playerId).map((player) => (
                     <div key={player.id} className={`cpu-player ${player.position === 'top' ? 'cpu-top' : player.position === 'left' ? 'cpu-left' : 'cpu-right'}`}>
                         <div className="cpu-info">
-                            <div className="cpu-name">{player.name}</div>
+                            <div className="cpu-name">{player.name} ({player.hand.length})</div>
                         </div>
                         <div className={player.position === 'left' || player.position === 'right' ? 'cpu-hand-vertical' : 'cpu-hand'}>
                             {player.hand.map((card, i) => (
@@ -1021,12 +1214,28 @@ export default function UnoGame() {
                         maxWidth: '500px',
                         height: '150px',
                         overflowY: 'auto',
-                        fontSize: '0.8rem'
+                        fontSize: '0.8rem',
+                        textAlign: 'left'
                     }}>
                         {messages.map((msg, i) => (
                             <div key={i}>{msg}</div>
                         ))}
                     </div>
+                    
+                    <button
+                        onClick={leaveRoom}
+                        style={{
+                            marginTop: '1rem',
+                            padding: '0.5rem 1rem',
+                            background: '#dc3545',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '0.5rem',
+                            cursor: 'pointer'
+                        }}
+                    >
+                        Leave Game
+                    </button>
                 </div>
                 
                 {/* PLAYER BOTTOM */}
