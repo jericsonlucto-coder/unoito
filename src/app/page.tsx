@@ -146,8 +146,8 @@ export default function UnoGame() {
     const [gameVisible,     setGameVisible]     = useState(false)
     const [gameWinner,      setGameWinner]      = useState<'player' | 'cpu' | null>(null)
     const [cpuVisible,      setCpuVisible]      = useState(false)
-    const [wildCardColor,   setWildCardColor]   = useState<string>('') // For wild card visual effect
-    const [selectedWildColor, setSelectedWildColor] = useState<string>('') // Store the selected wild card color
+    const [wildCardColor,   setWildCardColor]   = useState<string>('')
+    const [selectedWildColor, setSelectedWildColor] = useState<string>('')
     // #endregion
 
     // #region REFS
@@ -230,14 +230,13 @@ export default function UnoGame() {
         gameOnRef.current = true
         setColorPickerOpen(false)
         colorPickerRef.current = false
-        setWildCardColor('') // Reset wild card color on new hand
-        setSelectedWildColor('') // Reset selected color
+        setWildCardColor('')
+        setSelectedWildColor('')
 
         let newDeck = createDeck()
         newDeck = shuffleDeck(newDeck)
         audioManager.play('shuffle')
 
-        // deal 7 cards each
         const newCpuHand:    CardType[] = []
         const newPlayerHand: CardType[] = []
         for (let i = 0; i < 7; i++) {
@@ -245,7 +244,6 @@ export default function UnoGame() {
             newPlayerHand.push(newDeck.shift()!)
         }
 
-        // find first valid start card
         let startCard: CardType | null = null
         for (let i = 0; i < newDeck.length; i++) {
             if (newDeck[i].color !== 'any' && newDeck[i].value <= 9) {
@@ -322,7 +320,6 @@ export default function UnoGame() {
         const currentPlayPile   = [...playPileRef.current]
         const topCard           = currentPlayPile[currentPlayPile.length - 1]
 
-        // determine playable cards
         const playable:   CardType[] = []
         const remaining:  CardType[] = []
 
@@ -339,7 +336,6 @@ export default function UnoGame() {
             }
         }
 
-        // no playable cards - draw
         if (playable.length === 0) {
             const { newHand: newCpu, newDeck, newPlayPile } = drawCardLogic(
                 remaining, currentDeck, currentPlayPile
@@ -358,7 +354,6 @@ export default function UnoGame() {
             return
         }
 
-        // pick a card
         let chosenCard:    CardType
         let leftoverCards: CardType[]
 
@@ -366,7 +361,6 @@ export default function UnoGame() {
             chosenCard    = playable[0]
             leftoverCards = remaining
         } else {
-            // strategist
             const strategist   = Math.random()
             const lastCard     = currentPlayPile[currentPlayPile.length - 1]
             const secondLast   = currentPlayPile[currentPlayPile.length - 2]
@@ -403,7 +397,6 @@ export default function UnoGame() {
             const newPlayPile = [...currentPlayPile, { ...chosenCard, playedByPlayer: false }]
             let newCpuHand    = [...leftoverCards]
 
-            // cpu picks color after wild
             if (chosenCard.color === 'any' && chosenCard.drawValue === 0) {
                 const colors    = ['rgb(255, 6, 0)', 'rgb(0, 170, 69)', 'rgb(0, 150, 224)', 'rgb(255, 222, 0)']
                 const counts    = [0, 0, 0, 0]
@@ -412,7 +405,6 @@ export default function UnoGame() {
                 }
                 const pickedColor = colors[counts.indexOf(Math.max(...counts))]
                 newPlayPile[newPlayPile.length - 1].color = pickedColor
-                // Keep the wild card color effect until a new card is played
                 setWildCardColor(pickedColor)
                 setSelectedWildColor(pickedColor)
                 wildCardColorRef.current = pickedColor
@@ -426,7 +418,6 @@ export default function UnoGame() {
 
             if (newCpuHand.length === 1) triggerUno('cpu')
 
-            // draw card penalty for player
             if (chosenCard.drawValue > 0) {
                 audioManager.play('plusCard')
                 let updatedPlayerHand = [...currentPlayerHand]
@@ -448,7 +439,6 @@ export default function UnoGame() {
                 playPileRef.current = updatedPlayPile
             }
 
-            // end of round
             if (newCpuHand.length === 0) {
                 setTimeout(() => {
                     const points      = tallyPoints(playerHandRef.current)
@@ -460,7 +450,6 @@ export default function UnoGame() {
                 return
             }
 
-            // change turn or go again
             if (chosenCard.changeTurn) {
                 setPlayerTurn(true)
                 playerTurnRef.current = true
@@ -499,7 +488,6 @@ export default function UnoGame() {
         setPlayPile(newPlayPile)
         playPileRef.current = newPlayPile
 
-        // Reset wild card colors when a new card is played (unless the new card is also a wild card)
         if (playedCard.color !== 'any') {
             setWildCardColor('')
             setSelectedWildColor('')
@@ -509,7 +497,6 @@ export default function UnoGame() {
 
         if (newPlayerHand.length === 1) triggerUno('player')
 
-        // draw card penalty for cpu
         if (playedCard.drawValue > 0) {
             audioManager.play('plusCard')
             let updatedCpuHand  = [...cpuHandRef.current]
@@ -531,7 +518,6 @@ export default function UnoGame() {
             playPileRef.current = updatedPlayPile
         }
 
-        // end of round
         if (newPlayerHand.length === 0) {
             setTimeout(() => {
                 const points         = tallyPoints(cpuHandRef.current)
@@ -543,14 +529,12 @@ export default function UnoGame() {
             return
         }
 
-        // wild - open color picker
         if (playedCard.color === 'any' && playedCard.drawValue === 0) {
             setColorPickerOpen(true)
             colorPickerRef.current = true
             return
         }
 
-        // end turn
         if (playedCard.changeTurn) {
             setPlayerTurn(false)
             playerTurnRef.current = false
@@ -586,7 +570,6 @@ export default function UnoGame() {
         const newPlayPile = [...playPileRef.current]
         const lastCard = newPlayPile[newPlayPile.length - 1]
         
-        // Update the wild card's color
         newPlayPile[newPlayPile.length - 1] = {
             ...lastCard,
             color: color,
@@ -597,13 +580,11 @@ export default function UnoGame() {
         setColorPickerOpen(false)
         colorPickerRef.current = false
         
-        // Set the wild card color - this will persist until a new card is played
         setWildCardColor(color)
         setSelectedWildColor(color)
         wildCardColorRef.current = color
         selectedWildColorRef.current = color
         
-        // Create a temporary flash effect on the play area
         const playArea = document.querySelector('.play-area') as HTMLElement
         if (playArea) {
             const originalBg = playArea.style.backgroundColor
@@ -734,27 +715,18 @@ export default function UnoGame() {
         const valueNames: Record<number, string> = {
             10: 'Skip',
             11: 'Reverse',
-            12: 'Draw 2'
+            12: 'Draw 2',
+            13: 'Wild Card',
+            14: 'Wild Draw 4'
         }
         const value = valueNames[card.value] || card.value.toString()
+        
+        if (card.value === 13 && card.color !== 'any') {
+            return `${colorNames[card.color]} Wild Card`
+        }
+        
         return `${colorNames[card.color] || card.color} ${value}`
     }
-
-    // Helper to get wild card CSS class - uses selectedWildColor for persistent effect
-    const getWildCardClass = (card: CardType) => {
-    // Use the stored selectedWildColor for persistent color effect
-    const activeColor = selectedWildColor
-    
-    if (card.color !== 'any' || !activeColor) return ''
-    
-    switch(activeColor) {
-        case 'rgb(255, 6, 0)': return 'wild-card-red'
-        case 'rgb(0, 170, 69)': return 'wild-card-green'
-        case 'rgb(0, 150, 224)': return 'wild-card-blue'
-        case 'rgb(255, 222, 0)': return 'wild-card-yellow'
-        default: return ''
-    }
-}
 
     // #region JSX
     return (
@@ -800,23 +772,24 @@ export default function UnoGame() {
                                 {topCard.playedByPlayer ? '👤 Player played: ' : '🤖 CPU played: '}
                                 {getCardName(topCard)}
                                 {topCard.drawValue > 0 && ` (+${topCard.drawValue})`}
-                                {selectedWildColor && topCard.color === 'any' && (
+                                {topCard.value === 13 && topCard.color !== 'any' && (
                                     <span style={{ 
                                         display: 'inline-block', 
                                         marginLeft: '8px', 
-                                        padding: '2px 8px', 
-                                        borderRadius: '12px', 
+                                        padding: '2px 10px', 
+                                        borderRadius: '20px', 
                                         fontSize: '11px',
                                         fontWeight: 'bold',
-                                        backgroundColor: selectedWildColor === 'rgb(255, 6, 0)' ? '#ff4444' :
-                                                       selectedWildColor === 'rgb(0, 170, 69)' ? '#4caf50' :
-                                                       selectedWildColor === 'rgb(0, 150, 224)' ? '#2196f3' :
+                                        backgroundColor: topCard.color === 'rgb(255, 6, 0)' ? '#ff4444' :
+                                                       topCard.color === 'rgb(0, 170, 69)' ? '#4caf50' :
+                                                       topCard.color === 'rgb(0, 150, 224)' ? '#2196f3' :
                                                        '#ffeb3b',
-                                        color: selectedWildColor === 'rgb(255, 222, 0)' ? '#333' : 'white'
+                                        color: topCard.color === 'rgb(255, 222, 0)' ? '#333' : 'white',
+                                        animation: 'fadeIn 0.3s ease'
                                     }}>
-                                        {selectedWildColor === 'rgb(255, 6, 0)' ? '🔴 RED' :
-                                         selectedWildColor === 'rgb(0, 170, 69)' ? '🟢 GREEN' :
-                                         selectedWildColor === 'rgb(0, 150, 224)' ? '🔵 BLUE' :
+                                        {topCard.color === 'rgb(255, 6, 0)' ? '🔴 RED' :
+                                         topCard.color === 'rgb(0, 170, 69)' ? '🟢 GREEN' :
+                                         topCard.color === 'rgb(0, 150, 224)' ? '🔵 BLUE' :
                                          '🟡 YELLOW'}
                                     </span>
                                 )}
@@ -848,51 +821,53 @@ export default function UnoGame() {
                 </div>
 
                 {/* PLAY PILE */}
-               {/* PLAY PILE */}
-<div className='play-pile'>
-    {topCard && (
-        <div style={{ position: 'relative', display: 'inline-block' }}>
-            <Image
-                src={topCard.src}
-                alt='play pile'
-                width={100}
-                height={150}
-                style={{
-                    transition: 'all 0.3s ease',
-                    borderRadius: '10px',
-                    boxShadow: selectedWildColor && topCard.color === 'any' && topCard.drawValue === 0 ? 
-                        (selectedWildColor === 'rgb(255, 6, 0)' ? '0 0 0 4px rgba(255, 6, 0, 0.8), 0 0 0 8px rgba(255, 6, 0, 0.4), 0 0 20px 5px rgba(255, 6, 0, 0.6)' :
-                        selectedWildColor === 'rgb(0, 170, 69)' ? '0 0 0 4px rgba(0, 170, 69, 0.8), 0 0 0 8px rgba(0, 170, 69, 0.4), 0 0 20px 5px rgba(0, 170, 69, 0.6)' :
-                        selectedWildColor === 'rgb(0, 150, 224)' ? '0 0 0 4px rgba(0, 150, 224, 0.8), 0 0 0 8px rgba(0, 150, 224, 0.4), 0 0 20px 5px rgba(0, 150, 224, 0.6)' :
-                        '0 0 0 4px rgba(255, 222, 0, 0.8), 0 0 0 8px rgba(255, 222, 0, 0.4), 0 0 20px 5px rgba(255, 222, 0, 0.6)') :
-                        '0 0.8rem 1.6rem rgba(0, 0, 0, 0.3)',
-                    transform: selectedWildColor && topCard.color === 'any' && topCard.drawValue === 0 ? 'scale(1.02)' : 'scale(1)',
-                    border: selectedWildColor && topCard.color === 'any' && topCard.drawValue === 0 ? '2px solid' : 'none',
-                    borderColor: selectedWildColor === 'rgb(255, 6, 0)' ? '#ff4444' :
-                               selectedWildColor === 'rgb(0, 170, 69)' ? '#4caf50' :
-                               selectedWildColor === 'rgb(0, 150, 224)' ? '#2196f3' :
-                               selectedWildColor === 'rgb(255, 222, 0)' ? '#ffeb3b' : 'transparent'
-                }}
-            />
-            {selectedWildColor && topCard.color === 'any' && topCard.drawValue === 0 && (
-                <div style={{
-                    position: 'absolute',
-                    top: '-5px',
-                    left: '-5px',
-                    right: '-5px',
-                    bottom: '-5px',
-                    borderRadius: '12px',
-                    background: `radial-gradient(circle, ${selectedWildColor === 'rgb(255, 6, 0)' ? 'rgba(255, 6, 0, 0.3)' :
-                                 selectedWildColor === 'rgb(0, 170, 69)' ? 'rgba(0, 170, 69, 0.3)' :
-                                 selectedWildColor === 'rgb(0, 150, 224)' ? 'rgba(0, 150, 224, 0.3)' :
-                                 'rgba(255, 222, 0, 0.3)'}, transparent)`,
-                    pointerEvents: 'none',
-                    animation: 'glowPulse 1.5s ease-in-out infinite'
-                }} />
-            )}
-        </div>
-    )}
-</div>
+                <div className='play-pile'>
+                    {topCard && (
+                        <div style={{ position: 'relative', display: 'inline-block' }}>
+                            <Image
+                                src={topCard.src}
+                                alt='play pile'
+                                width={100}
+                                height={150}
+                                style={{
+                                    transition: 'all 0.3s ease',
+                                    borderRadius: '10px',
+                                    boxShadow: (topCard.color !== 'any' && topCard.value === 13 && topCard.drawValue === 0) ? 
+                                        (topCard.color === 'rgb(255, 6, 0)' ? '0 0 0 4px rgba(255, 6, 0, 0.8), 0 0 0 8px rgba(255, 6, 0, 0.4), 0 0 20px 5px rgba(255, 6, 0, 0.6)' :
+                                        topCard.color === 'rgb(0, 170, 69)' ? '0 0 0 4px rgba(0, 170, 69, 0.8), 0 0 0 8px rgba(0, 170, 69, 0.4), 0 0 20px 5px rgba(0, 170, 69, 0.6)' :
+                                        topCard.color === 'rgb(0, 150, 224)' ? '0 0 0 4px rgba(0, 150, 224, 0.8), 0 0 0 8px rgba(0, 150, 224, 0.4), 0 0 20px 5px rgba(0, 150, 224, 0.6)' :
+                                        '0 0 0 4px rgba(255, 222, 0, 0.8), 0 0 0 8px rgba(255, 222, 0, 0.4), 0 0 20px 5px rgba(255, 222, 0, 0.6)') :
+                                        '0 0.8rem 1.6rem rgba(0, 0, 0, 0.3)',
+                                    transform: (topCard.color !== 'any' && topCard.value === 13 && topCard.drawValue === 0) ? 'scale(1.02)' : 'scale(1)',
+                                    border: (topCard.color !== 'any' && topCard.value === 13 && topCard.drawValue === 0) ? '2px solid' : 'none',
+                                    borderColor: topCard.color === 'rgb(255, 6, 0)' ? '#ff4444' :
+                                               topCard.color === 'rgb(0, 170, 69)' ? '#4caf50' :
+                                               topCard.color === 'rgb(0, 150, 224)' ? '#2196f3' :
+                                               topCard.color === 'rgb(255, 222, 0)' ? '#ffeb3b' : 'transparent'
+                                }}
+                            />
+                            {(topCard.color !== 'any' && topCard.value === 13 && topCard.drawValue === 0) && (
+                                <div style={{
+                                    position: 'absolute',
+                                    top: '-8px',
+                                    left: '-8px',
+                                    right: '-8px',
+                                    bottom: '-8px',
+                                    borderRadius: '15px',
+                                    background: `radial-gradient(circle, ${
+                                        topCard.color === 'rgb(255, 6, 0)' ? 'rgba(255, 6, 0, 0.3)' :
+                                        topCard.color === 'rgb(0, 170, 69)' ? 'rgba(0, 170, 69, 0.3)' :
+                                        topCard.color === 'rgb(0, 150, 224)' ? 'rgba(0, 150, 224, 0.3)' :
+                                        'rgba(255, 222, 0, 0.3)'
+                                    }, transparent)`,
+                                    pointerEvents: 'none',
+                                    animation: 'glowPulse 1.5s ease-in-out infinite',
+                                    zIndex: 1
+                                }} />
+                            )}
+                        </div>
+                    )}
+                </div>
 
                 {/* DRAW PILE */}
                 <div className='draw-pile' onClick={handleDrawPileClick} style={{ cursor: 'pointer' }}>
