@@ -174,18 +174,33 @@ class AudioManager {
 const audioManager = new AudioManager()
 // #endregion
 
-// Global room storage (shared across tabs via localStorage)
-let globalRooms: Map<string, RoomData> = new Map()
-
-// Load rooms from localStorage
-if (typeof window !== 'undefined') {
-    const saved = localStorage.getItem('uno_rooms')
-    if (saved) {
-        try {
-            const parsed = JSON.parse(saved) as [string, RoomData][]
-            globalRooms = new Map(parsed)
-        } catch (e) {}
+// Helper functions for room storage
+const saveRoomsToLocalStorage = (rooms: Map<string, RoomData>) => {
+    if (typeof window !== 'undefined') {
+        const roomsObj: Record<string, RoomData> = {}
+        rooms.forEach((value, key) => {
+            roomsObj[key] = value
+        })
+        localStorage.setItem('uno_rooms', JSON.stringify(roomsObj))
     }
+}
+
+const loadRoomsFromLocalStorage = (): Map<string, RoomData> => {
+    const rooms = new Map<string, RoomData>()
+    if (typeof window !== 'undefined') {
+        const saved = localStorage.getItem('uno_rooms')
+        if (saved) {
+            try {
+                const roomsObj = JSON.parse(saved) as Record<string, RoomData>
+                Object.entries(roomsObj).forEach(([key, value]) => {
+                    rooms.set(key, value)
+                })
+            } catch (e) {
+                console.error('Failed to load rooms from localStorage:', e)
+            }
+        }
+    }
+    return rooms
 }
 
 export default function UnoGame() {
@@ -244,13 +259,6 @@ export default function UnoGame() {
         const link = `${window.location.origin}?room=${roomId}`
         navigator.clipboard.writeText(link)
         addMessage('Invite link copied to clipboard!')
-    }
-
-    const saveRoomsToStorage = () => {
-        if (typeof window !== 'undefined') {
-            const roomsArray = Array.from(globalRooms.entries())
-            localStorage.setItem('uno_rooms', JSON.stringify(roomsArray))
-        }
     }
 
     const getNextTurn = (current: string, currentDirection: 'clockwise' | 'counter-clockwise', playerList: Player[]): string => {
@@ -492,10 +500,10 @@ export default function UnoGame() {
     // #endregion
 
     // #region MULTIPLAYER FUNCTIONS
-    const createMultiplayerRoom = async () => {
+    const createMultiplayerRoom = () => {
         const newRoomId = generateRoomId()
         const newPlayerId = generatePlayerId()
-        const newPlayerName = playerName || `Player_${newPlayerId.slice(-4)}`
+        const newPlayerName = playerName.trim() || `Player_${newPlayerId.slice(-4)}`
         
         setPlayerId(newPlayerId)
         setRoomId(newRoomId)
@@ -512,20 +520,21 @@ export default function UnoGame() {
             isOnline: true
         }
         
-        globalRooms.set(newRoomId, {
+        const rooms = loadRoomsFromLocalStorage()
+        rooms.set(newRoomId, {
             players: [newPlayer],
             gameState: null,
             createdAt: Date.now(),
             hostId: newPlayerId
         })
-        saveRoomsToStorage()
+        saveRoomsToLocalStorage(rooms)
         
         // Initialize Pusher for real-time updates
         const pusher = new Pusher(PUSHER_CONFIG.key, {
             cluster: PUSHER_CONFIG.cluster
         })
         
-        const channel = pusher.subscribe(`presence-game-${newRoomId}`)
+        const channel = pusher.subscribe(`game-${newRoomId}`)
         setPusherChannel(channel)
         
         channel.bind('pusher:subscription_succeeded', () => {
@@ -542,17 +551,19 @@ export default function UnoGame() {
         addMessage(`Share this code with friends to join!`)
     }
 
-    const joinMultiplayerRoom = async () => {
-        if (!roomId) {
+    const joinMultiplayerRoom = () => {
+        const inputRoomId = roomId.trim().toUpperCase()
+        
+        if (!inputRoomId) {
             addMessage('Please enter a room code!')
             return
         }
         
-        const upperRoomId = roomId.toUpperCase()
-        const room = globalRooms.get(upperRoomId)
+        const rooms = loadRoomsFromLocalStorage()
+        const room = rooms.get(inputRoomId)
         
         if (!room) {
-            addMessage('Room not found! Please check the room code.')
+            addMessage(`Room "${inputRoomId}" not found! Please check the room code.`)
             return
         }
         
@@ -562,7 +573,7 @@ export default function UnoGame() {
         }
         
         const newPlayerId = generatePlayerId()
-        const newPlayerName = playerName || `Player_${newPlayerId.slice(-4)}`
+        const newPlayerName = playerName.trim() || `Player_${newPlayerId.slice(-4)}`
         
         setPlayerId(newPlayerId)
         setIsHost(false)
@@ -582,36 +593,36 @@ export default function UnoGame() {
         }
         
         room.players.push(newPlayer)
-        globalRooms.set(upperRoomId, room)
-        saveRoomsToStorage()
+        rooms.set(inputRoomId, room)
+        saveRoomsToLocalStorage(rooms)
         
         // Initialize Pusher
         const pusher = new Pusher(PUSHER_CONFIG.key, {
             cluster: PUSHER_CONFIG.cluster
         })
         
-        const channel = pusher.subscribe(`presence-game-${upperRoomId}`)
+        const channel = pusher.subscribe(`game-${inputRoomId}`)
         setPusherChannel(channel)
         
         channel.bind('pusher:subscription_succeeded', () => {
             console.log('Connected to room channel')
+            // Notify other players after successful connection
+            channel.trigger('client-game-event', {
+                type: 'PLAYER_JOINED',
+                playerId: newPlayerId,
+                playerName: newPlayerName,
+                data: { players: room.players }
+            })
         })
         
         channel.bind('client-game-event', (data: GameEvent) => {
             handleGameEvent(data)
         })
         
-        // Notify other players
-        channel.trigger('client-game-event', {
-            type: 'PLAYER_JOINED',
-            playerId: newPlayerId,
-            playerName: newPlayerName,
-            data: { players: room.players }
-        })
-        
         setPlayers(room.players)
+        setRoomId(inputRoomId)
         setGameMode('waiting')
-        addMessage(`Joined room: ${upperRoomId}`)
+        addMessage(`Joined room: ${inputRoomId}`)
     }
 
     const handleGameEvent = (event: GameEvent) => {
@@ -622,12 +633,13 @@ export default function UnoGame() {
                 addMessage(`${event.playerName} joined the game`)
                 if (event.data?.players) {
                     setPlayers(event.data.players)
-                    // Update global room
-                    const room = globalRooms.get(roomId)
+                    // Update room in localStorage
+                    const rooms = loadRoomsFromLocalStorage()
+                    const room = rooms.get(roomId)
                     if (room) {
                         room.players = event.data.players
-                        globalRooms.set(roomId, room)
-                        saveRoomsToStorage()
+                        rooms.set(roomId, room)
+                        saveRoomsToLocalStorage(rooms)
                     }
                 }
                 break
@@ -656,8 +668,15 @@ export default function UnoGame() {
     }
 
     const startMultiplayerGame = () => {
-        const room = globalRooms.get(roomId)
-        if (!room || room.players.length < 2) {
+        const rooms = loadRoomsFromLocalStorage()
+        const room = rooms.get(roomId)
+        
+        if (!room) {
+            addMessage('Room not found!')
+            return
+        }
+        
+        if (room.players.length < 2) {
             addMessage('Need at least 2 players to start!')
             return
         }
@@ -702,8 +721,8 @@ export default function UnoGame() {
         }
         
         room.gameState = newGameState
-        globalRooms.set(roomId, room)
-        saveRoomsToStorage()
+        rooms.set(roomId, room)
+        saveRoomsToLocalStorage(rooms)
         
         // Notify all players
         if (pusherChannel) {
@@ -733,15 +752,16 @@ export default function UnoGame() {
             pusherChannel.unsubscribe()
             
             // Remove player from room
-            const room = globalRooms.get(roomId)
+            const rooms = loadRoomsFromLocalStorage()
+            const room = rooms.get(roomId)
             if (room) {
                 room.players = room.players.filter(p => p.id !== playerId)
                 if (room.players.length === 0) {
-                    globalRooms.delete(roomId)
+                    rooms.delete(roomId)
                 } else {
-                    globalRooms.set(roomId, room)
+                    rooms.set(roomId, room)
                 }
-                saveRoomsToStorage()
+                saveRoomsToLocalStorage(rooms)
             }
         }
         setGameMode('menu')
