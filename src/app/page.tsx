@@ -51,6 +51,13 @@ interface GameEvent {
     playerName?: string
     data: any
 }
+
+interface RoomData {
+    players: Player[]
+    gameState: GameState | null
+    createdAt: number
+    hostId: string
+}
 // #endregion
 
 // #region CARD CLASS
@@ -168,19 +175,14 @@ const audioManager = new AudioManager()
 // #endregion
 
 // Global room storage (shared across tabs via localStorage)
-let globalRooms: Map<string, {
-    players: Player[]
-    gameState: GameState | null
-    createdAt: number
-    hostId: string
-}> = new Map()
+let globalRooms: Map<string, RoomData> = new Map()
 
 // Load rooms from localStorage
 if (typeof window !== 'undefined') {
     const saved = localStorage.getItem('uno_rooms')
     if (saved) {
         try {
-            const parsed = JSON.parse(saved)
+            const parsed = JSON.parse(saved) as [string, RoomData][]
             globalRooms = new Map(parsed)
         } catch (e) {}
     }
@@ -342,7 +344,8 @@ export default function UnoGame() {
         // Deal 7 cards to each player
         for (let i = 0; i < 7; i++) {
             for (let j = 0; j < playersList.length; j++) {
-                playersList[j].hand.push(newDeck.shift()!)
+                const card = newDeck.shift()
+                if (card) playersList[j].hand.push(card)
             }
         }
         
@@ -394,7 +397,6 @@ export default function UnoGame() {
         if (playable.length === 0) {
             // Draw a card
             const newDeck = [...gameStateRef.current.deck]
-            const newPlayPile = [...gameStateRef.current.playPile]
             const drawnCard = newDeck.shift()
             if (!drawnCard) return
             
@@ -408,7 +410,6 @@ export default function UnoGame() {
                 ...gameStateRef.current,
                 players: updatedPlayers,
                 deck: newDeck,
-                playPile: newPlayPile
             })
             
             addMessage(`${aiPlayer.name} drew a card`)
@@ -442,19 +443,21 @@ export default function UnoGame() {
         }
         
         if (playedCard.drawValue > 0) {
-            const nextPlayer = updatedPlayers.find(p => p.id === nextTurn)!
-            const newDeck = [...gameStateRef.current.deck]
-            for (let i = 0; i < playedCard.drawValue; i++) {
-                const card = newDeck.shift()
-                if (card) nextPlayer.hand.push(card)
+            const nextPlayer = updatedPlayers.find(p => p.id === nextTurn)
+            if (nextPlayer) {
+                const newDeck = [...gameStateRef.current.deck]
+                for (let i = 0; i < playedCard.drawValue; i++) {
+                    const card = newDeck.shift()
+                    if (card) nextPlayer.hand.push(card)
+                }
+                addMessage(`${aiPlayer.name} played ${getCardName(playedCard)} and ${nextPlayer.name} drew ${playedCard.drawValue} cards`)
+                setGameState({
+                    ...gameStateRef.current,
+                    players: updatedPlayers,
+                    playPile: newPlayPile,
+                    deck: newDeck
+                })
             }
-            addMessage(`${aiPlayer.name} played ${getCardName(playedCard)} and ${nextPlayer.name} drew ${playedCard.drawValue} cards`)
-            setGameState({
-                ...gameStateRef.current,
-                players: updatedPlayers,
-                playPile: newPlayPile,
-                deck: newDeck
-            })
         } else {
             addMessage(`${aiPlayer.name} played ${getCardName(playedCard)}`)
             setGameState({
@@ -664,15 +667,17 @@ export default function UnoGame() {
         newDeck = shuffleDeck(newDeck)
         
         // Deal cards
-        const playersWithHands = room.players.map(player => ({
+        const playersWithHands: Player[] = room.players.map(player => ({
             ...player,
-            hand: []
+            hand: [] as CardType[]
         }))
         
         for (let i = 0; i < 7; i++) {
             for (let j = 0; j < playersWithHands.length; j++) {
                 const card = newDeck.shift()
-                if (card) playersWithHands[j].hand.push(card)
+                if (card) {
+                    playersWithHands[j].hand.push(card)
+                }
             }
         }
         
@@ -751,7 +756,9 @@ export default function UnoGame() {
     const handlePlayCard = (cardIndex: number) => {
         if (!gameState || currentTurn !== playerId || colorPickerOpen) return
         
-        const player = gameState.players.find(p => p.id === playerId)!
+        const player = gameState.players.find(p => p.id === playerId)
+        if (!player) return
+        
         const card = player.hand[cardIndex]
         const topCard = gameState.playPile[gameState.playPile.length - 1]
         
@@ -786,12 +793,14 @@ export default function UnoGame() {
         let newDeck = [...gameState.deck]
         
         if (card.drawValue > 0) {
-            const nextPlayer = updatedPlayers.find(p => p.id === nextTurn)!
-            for (let i = 0; i < card.drawValue; i++) {
-                const drawnCard = newDeck.shift()
-                if (drawnCard) nextPlayer.hand.push(drawnCard)
+            const nextPlayer = updatedPlayers.find(p => p.id === nextTurn)
+            if (nextPlayer) {
+                for (let i = 0; i < card.drawValue; i++) {
+                    const drawnCard = newDeck.shift()
+                    if (drawnCard) nextPlayer.hand.push(drawnCard)
+                }
+                addMessage(`You played ${getCardName(card)} and ${nextPlayer.name} drew ${card.drawValue} cards`)
             }
-            addMessage(`You played ${getCardName(card)} and ${nextPlayer.name} drew ${card.drawValue} cards`)
         } else {
             addMessage(`You played ${getCardName(card)}`)
         }
@@ -828,7 +837,9 @@ export default function UnoGame() {
     const handleDrawCard = () => {
         if (!gameState || currentTurn !== playerId || colorPickerOpen) return
         
-        const player = gameState.players.find(p => p.id === playerId)!
+        const player = gameState.players.find(p => p.id === playerId)
+        if (!player) return
+        
         const newDeck = [...gameState.deck]
         const drawnCard = newDeck.shift()
         if (!drawnCard) return
@@ -1236,7 +1247,9 @@ export default function UnoGame() {
     const renderGame = () => {
         if (!gameState) return null
         
-        const currentPlayer = gameState.players.find(p => p.id === playerId)!
+        const currentPlayer = gameState.players.find(p => p.id === playerId)
+        if (!currentPlayer) return null
+        
         const topCard = gameState.playPile[gameState.playPile.length - 1]
         
         return (
@@ -1248,7 +1261,7 @@ export default function UnoGame() {
                             <div className="cpu-name">{player.name} ({player.hand.length})</div>
                         </div>
                         <div className={player.position === 'left' || player.position === 'right' ? 'cpu-hand-vertical' : 'cpu-hand'}>
-                            {player.hand.map((card, i) => (
+                            {player.hand.map((_card, i) => (
                                 <Image
                                     key={i}
                                     src={'/images/back.png'}
