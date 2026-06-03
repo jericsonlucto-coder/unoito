@@ -134,7 +134,8 @@ const audioManager = new AudioManager()
 // #endregion
 
 const GAME_OVER_SCORE = 100
-const PLAYER_ORDER: Player['id'][] = ['cpu1', 'cpu2', 'cpu3', 'player']
+// Turn order: player (bottom) -> cpu2 (left) -> cpu1 (top) -> cpu3 (right) -> back to player
+const PLAYER_ORDER: Player['id'][] = ['player', 'cpu2', 'cpu1', 'cpu3']
 
 export default function UnoGame() {
 
@@ -162,7 +163,7 @@ export default function UnoGame() {
         cpu2: false,
         cpu3: false,
     })
-    // New state for turn direction
+    // Turn direction state
     const [direction, setDirection] = useState<'clockwise' | 'counter-clockwise'>('clockwise')
     // #endregion
 
@@ -200,10 +201,10 @@ export default function UnoGame() {
         let nextIndex: number
         
         if (currentDirection === 'clockwise') {
-            // Move forward in the array
+            // Move forward: player -> left -> top -> right -> player
             nextIndex = (currentIndex + 1) % PLAYER_ORDER.length
         } else {
-            // Move backward in the array
+            // Move backward: player -> right -> top -> left -> player
             nextIndex = (currentIndex - 1 + PLAYER_ORDER.length) % PLAYER_ORDER.length
         }
         
@@ -278,6 +279,7 @@ export default function UnoGame() {
         playPileRef.current = newPlayPile
         
         console.log("🎮 New game - Player hand size:", newPlayers[0].hand.length)
+        console.log("🎮 Turn order: YOU (bottom) → CPU LEFT → CPU TOP → CPU RIGHT → YOU")
     }, [players])
     // #endregion
 
@@ -516,7 +518,7 @@ export default function UnoGame() {
             return
         }
 
-        // Determine next turn
+        // Determine next turn (Skip card jumps over next player)
         let nextTurn: Player['id']
         if (chosenCard.value === 10) { // Skip card
             nextTurn = getNextTurn(getNextTurn(cpuId, newDirection), newDirection)
@@ -637,7 +639,7 @@ export default function UnoGame() {
             return
         }
 
-        // Determine next turn
+        // Determine next turn (Skip card jumps over next player)
         let nextTurn: Player['id']
         if (playedCard.value === 10) { // Skip card
             nextTurn = getNextTurn(getNextTurn('player', newDirection), newDirection)
@@ -652,13 +654,9 @@ export default function UnoGame() {
     const handleDrawPileClick = useCallback(() => {
         if (currentTurnRef.current !== 'player' || colorPickerRef.current || !gameOnRef.current) return
 
-        console.log("=== DRAW CARD DEBUG ===")
-        
         // Get the current player from state
         const currentPlayers = players
         const player = currentPlayers.find(p => p.id === 'player')!
-        
-        console.log("Current hand BEFORE draw:", player.hand.length)
         
         const currentDeck = [...deckRef.current]
         const currentPlayPile = [...playPileRef.current]
@@ -709,13 +707,12 @@ export default function UnoGame() {
                 topCard.color === 'any'
 
             if (canPlayDrawnCard) {
-                console.log("Drawn card can be played - turn stays with player")
+                // Player can play the drawn card - turn stays with player
                 return
             }
         }
         
         // Cannot play drawn card, move to next player
-        console.log("Cannot play drawn card - moving to next player")
         const nextTurn = getNextTurn('player', currentDirection)
         setCurrentTurn(nextTurn)
         currentTurnRef.current = nextTurn
@@ -897,6 +894,9 @@ export default function UnoGame() {
                         ) : (
                             <span className='turn-cpu'>🤖 {getPlayerById(currentTurn).name}'s TURN 🤖 {getDirectionArrow()}</span>
                         )}
+                    </p>
+                    <p style={{ fontSize: '1rem', marginTop: '0.5rem', opacity: 0.8 }}>
+                        Order: YOU → CPU LEFT → CPU TOP → CPU RIGHT → YOU
                     </p>
                 </div>
 
