@@ -46,17 +46,11 @@ interface GameState {
 }
 
 interface GameEvent {
-    type: 'PLAY_CARD' | 'DRAW_CARD' | 'COLOR_CHOSEN' | 'UNO' | 'PLAYER_READY' | 'PLAYER_JOINED' | 'PLAYER_LEFT' | 'START_GAME' | 'SYNC_STATE' | 'ROOM_CREATED' | 'REQUEST_ROOM'
+    type: 'PLAY_CARD' | 'DRAW_CARD' | 'COLOR_CHOSEN' | 'UNO' | 'PLAYER_READY' | 'PLAYER_JOINED' | 'PLAYER_LEFT' | 'START_GAME' | 'SYNC_STATE' | 'ROOM_CREATED' | 'REQUEST_ROOM' | 'ROOM_RESPONSE'
     playerId: string
     playerName?: string
+    roomId?: string
     data: any
-}
-
-interface RoomData {
-    players: Player[]
-    gameState: GameState | null
-    createdAt: number
-    hostId: string
 }
 // #endregion
 
@@ -174,8 +168,15 @@ class AudioManager {
 const audioManager = new AudioManager()
 // #endregion
 
-// Global rooms storage (shared via Pusher events)
+// Global rooms storage
 let globalRooms: Map<string, RoomData> = new Map()
+
+interface RoomData {
+    players: Player[]
+    gameState: GameState | null
+    createdAt: number
+    hostId: string
+}
 
 export default function UnoGame() {
 
@@ -197,7 +198,7 @@ export default function UnoGame() {
     const [pusherChannel, setPusherChannel] = useState<any>(null)
     const [pusherConnection, setPusherConnection] = useState<any>(null)
     const [isHost, setIsHost] = useState(false)
-    const [globalPusher, setGlobalPusher] = useState<any>(null)
+    const [globalChannel, setGlobalChannel] = useState<any>(null)
     // #endregion
 
     // #region REFS
@@ -316,7 +317,6 @@ export default function UnoGame() {
             }
         ]
         
-        // Add AI players based on selected count
         const aiPositions = ['top', 'left', 'right'] as const
         for (let i = 0; i < playerCount - 1; i++) {
             playersList.push(createAIPlayer(
@@ -326,7 +326,6 @@ export default function UnoGame() {
             ))
         }
         
-        // Deal 7 cards to each player
         for (let i = 0; i < 7; i++) {
             for (let j = 0; j < playersList.length; j++) {
                 const card = newDeck.shift()
@@ -334,7 +333,6 @@ export default function UnoGame() {
             }
         }
         
-        // Find first valid start card
         let startCard: CardType | null = null
         for (let i = 0; i < newDeck.length; i++) {
             if (newDeck[i].color !== 'any' && newDeck[i].value <= 9) {
@@ -371,7 +369,6 @@ export default function UnoGame() {
 
         const topCard = gameStateRef.current.playPile[gameStateRef.current.playPile.length - 1]
         
-        // Find playable cards
         const playable = aiPlayer.hand.filter(card =>
             card.color === topCard.color ||
             card.value === topCard.value ||
@@ -380,7 +377,6 @@ export default function UnoGame() {
         )
 
         if (playable.length === 0) {
-            // Draw a card
             const newDeck = [...gameStateRef.current.deck]
             const drawnCard = newDeck.shift()
             if (!drawnCard) return
@@ -404,7 +400,6 @@ export default function UnoGame() {
             return
         }
 
-        // Play a card
         const playedCard = playable[0]
         const newHand = aiPlayer.hand.filter(c => c !== playedCard)
         const newPlayPile = [...gameStateRef.current.playPile, { ...playedCard, playedByPlayer: false, playerId: aiPlayer.id }]
@@ -477,8 +472,8 @@ export default function UnoGame() {
     // #endregion
 
     // #region MULTIPLAYER FUNCTIONS
-    const initGlobalPusher = () => {
-        if (globalPusher) return
+    const initGlobalChannel = () => {
+        if (globalChannel) return globalChannel
         
         console.log('🌍 Initializing global Pusher for room discovery...')
         const pusher = new Pusher(PUSHER_CONFIG.key, {
@@ -486,46 +481,32 @@ export default function UnoGame() {
             enableStats: true
         })
         
-        setGlobalPusher(pusher)
+        const channel = pusher.subscribe('uno-global')
         
-        pusher.connection.bind('state_change', (states: any) => {
-            console.log('📡 Global Pusher connection state:', states.current)
-        })
-        
-        pusher.connection.bind('connected', () => {
-            console.log('✅ Global Pusher connected!')
-        })
-        
-        // Subscribe to global channel for room announcements
-        const globalChannel = pusher.subscribe('global-uno-rooms')
-        
-        globalChannel.bind('pusher:subscription_succeeded', () => {
+        channel.bind('pusher:subscription_succeeded', () => {
             console.log('✅ Subscribed to global channel for room discovery')
         })
         
-        globalChannel.bind('client-room-created', (data: { roomId: string, roomData: RoomData }) => {
+        channel.bind('client-room-created', (data: { roomId: string, roomData: RoomData }) => {
             console.log('📢 New room announced globally:', data.roomId)
             globalRooms.set(data.roomId, data.roomData)
         })
         
-        globalChannel.bind('client-room-updated', (data: { roomId: string, roomData: RoomData }) => {
-            console.log('📢 Room updated:', data.roomId)
-            globalRooms.set(data.roomId, data.roomData)
-        })
-        
-        globalChannel.bind('client-request-room', (data: { roomId: string, requesterId: string }) => {
+        channel.bind('client-room-request', (data: { roomId: string, requesterId: string }) => {
             console.log('📢 Room request received for:', data.roomId)
             const room = globalRooms.get(data.roomId)
             if (room) {
-                globalChannel.trigger('client-room-response', {
+                channel.trigger('client-room-response', {
                     roomId: data.roomId,
                     requesterId: data.requesterId,
                     roomData: room
                 })
+                console.log('📤 Sent room response for:', data.roomId)
             }
         })
         
-        return globalChannel
+        setGlobalChannel(channel)
+        return channel
     }
 
     const createMultiplayerRoom = () => {
@@ -540,7 +521,6 @@ export default function UnoGame() {
         setRoomId(newRoomId)
         setIsHost(true)
         
-        // Store room in memory
         const newPlayer: Player = {
             id: newPlayerId,
             name: newPlayerName,
@@ -560,20 +540,17 @@ export default function UnoGame() {
         
         globalRooms.set(newRoomId, roomData)
         
-        // Announce room globally via Pusher
-        initGlobalPusher()
-        const globalChannel = globalPusher?.subscribe('global-uno-rooms')
-        if (globalChannel) {
-            setTimeout(() => {
-                globalChannel.trigger('client-room-created', {
-                    roomId: newRoomId,
-                    roomData: roomData
-                })
-                console.log('📢 Announced room globally:', newRoomId)
-            }, 1000)
-        }
+        // Announce room globally
+        const channel = initGlobalChannel()
+        setTimeout(() => {
+            channel.trigger('client-room-created', {
+                roomId: newRoomId,
+                roomData: roomData
+            })
+            console.log('📢 Announced room globally:', newRoomId)
+        }, 1000)
         
-        // Initialize Pusher for this specific room
+        // Initialize room-specific Pusher
         console.log('🔌 Initializing Pusher connection for host...')
         const pusher = new Pusher(PUSHER_CONFIG.key, {
             cluster: PUSHER_CONFIG.cluster,
@@ -596,20 +573,20 @@ export default function UnoGame() {
             addMessage('Failed to connect to game server!')
         })
         
-        const channel = pusher.subscribe(`game-${newRoomId}`)
-        setPusherChannel(channel)
+        const roomChannel = pusher.subscribe(`game-${newRoomId}`)
+        setPusherChannel(roomChannel)
         
-        channel.bind('pusher:subscription_succeeded', () => {
+        roomChannel.bind('pusher:subscription_succeeded', () => {
             console.log(`✅ Subscribed to channel: game-${newRoomId}`)
             addMessage(`Room ${newRoomId} created! Waiting for players...`)
         })
         
-        channel.bind('pusher:subscription_error', (error: any) => {
+        roomChannel.bind('pusher:subscription_error', (error: any) => {
             console.error('❌ Subscription error:', error)
             addMessage('Failed to subscribe to room channel!')
         })
         
-        channel.bind('client-game-event', (data: GameEvent) => {
+        roomChannel.bind('client-game-event', (data: GameEvent) => {
             console.log('📨 Host received game event:', data)
             handleGameEvent(data)
         })
@@ -631,48 +608,47 @@ export default function UnoGame() {
             return
         }
         
-        // First, try to get room from global announcements
-        const room = globalRooms.get(inputRoomId)
+        // Check if room exists in memory
+        let room = globalRooms.get(inputRoomId)
         
         if (!room) {
-            // Request room info from global channel
-            initGlobalPusher()
-            const globalChannel = globalPusher?.subscribe('global-uno-rooms')
-            if (globalChannel) {
-                console.log('📤 Requesting room info from global channel...')
-                globalChannel.trigger('client-request-room', {
-                    roomId: inputRoomId,
-                    requesterId: 'joiner'
-                })
-                
-                // Listen for response
-                globalChannel.bind('client-room-response', (response: { roomId: string, requesterId: string, roomData: RoomData }) => {
-                    if (response.roomId === inputRoomId) {
-                        console.log('📥 Received room response:', response.roomData)
-                        globalRooms.set(inputRoomId, response.roomData)
-                        proceedToJoin(response.roomData)
-                    }
-                })
-                
-                addMessage('Looking for room... Please wait.')
-                setTimeout(() => {
-                    const foundRoom = globalRooms.get(inputRoomId)
-                    if (!foundRoom) {
-                        addMessage(`Room "${inputRoomId}" not found! Please check the room code.`)
-                    }
-                }, 3000)
-            } else {
-                addMessage(`Room "${inputRoomId}" not found! Please check the room code.`)
+            // Request room from global channel
+            console.log('📤 Requesting room info from global channel...')
+            const channel = initGlobalChannel()
+            
+            // Listen for response
+            const responseHandler = (data: { roomId: string, requesterId: string, roomData: RoomData }) => {
+                if (data.roomId === inputRoomId) {
+                    console.log('📥 Received room response:', data.roomData)
+                    globalRooms.set(inputRoomId, data.roomData)
+                    channel.unbind('client-room-response', responseHandler)
+                    proceedToJoin(data.roomData, inputRoomId)
+                }
             }
+            
+            channel.bind('client-room-response', responseHandler)
+            
+            channel.trigger('client-room-request', {
+                roomId: inputRoomId,
+                requesterId: 'joiner'
+            })
+            
+            addMessage('Looking for room... Please wait.')
+            
+            // Timeout after 5 seconds
+            setTimeout(() => {
+                channel.unbind('client-room-response', responseHandler)
+                if (!globalRooms.get(inputRoomId)) {
+                    addMessage(`Room "${inputRoomId}" not found! Please check the room code.`)
+                }
+            }, 5000)
             return
         }
         
-        proceedToJoin(room)
+        proceedToJoin(room, inputRoomId)
     }
     
-    const proceedToJoin = (room: RoomData) => {
-        const inputRoomId = roomId.trim().toUpperCase()
-        
+    const proceedToJoin = (room: RoomData, inputRoomId: string) => {
         if (room.players.length >= 4) {
             console.log('❌ Room is full')
             addMessage('Room is full!')
@@ -687,7 +663,6 @@ export default function UnoGame() {
         setPlayerId(newPlayerId)
         setIsHost(false)
         
-        // Add player to room
         const positions = ['right', 'top', 'left'] as const
         const position = positions[room.players.length - 1] || 'right'
         
@@ -704,16 +679,14 @@ export default function UnoGame() {
         room.players.push(newPlayer)
         globalRooms.set(inputRoomId, room)
         
-        // Announce room update globally
-        const globalChannel = globalPusher?.subscribe('global-uno-rooms')
-        if (globalChannel) {
-            globalChannel.trigger('client-room-updated', {
-                roomId: inputRoomId,
-                roomData: room
-            })
-        }
+        // Announce room update
+        const channel = initGlobalChannel()
+        channel.trigger('client-room-created', {
+            roomId: inputRoomId,
+            roomData: room
+        })
         
-        // Initialize Pusher
+        // Initialize Pusher for this room
         console.log('🔌 Initializing Pusher connection for joiner...')
         const pusher = new Pusher(PUSHER_CONFIG.key, {
             cluster: PUSHER_CONFIG.cluster,
@@ -722,18 +695,13 @@ export default function UnoGame() {
         
         setPusherConnection(pusher)
         
-        pusher.connection.bind('state_change', (states: any) => {
-            console.log('📡 Joiner Pusher connection state:', states.current)
-        })
-        
         pusher.connection.bind('connected', () => {
             console.log('✅ Joiner Pusher connected successfully!')
             addMessage('Connected to game server!')
             
-            // Notify host about new player after connection is established
             setTimeout(() => {
                 console.log('📤 Sending PLAYER_JOINED event to host...')
-                channel.trigger('client-game-event', {
+                roomChannel.trigger('client-game-event', {
                     type: 'PLAYER_JOINED',
                     playerId: newPlayerId,
                     playerName: newPlayerName,
@@ -748,20 +716,20 @@ export default function UnoGame() {
             addMessage('Failed to connect to game server!')
         })
         
-        const channel = pusher.subscribe(`game-${inputRoomId}`)
-        setPusherChannel(channel)
+        const roomChannel = pusher.subscribe(`game-${inputRoomId}`)
+        setPusherChannel(roomChannel)
         
-        channel.bind('pusher:subscription_succeeded', () => {
+        roomChannel.bind('pusher:subscription_succeeded', () => {
             console.log(`✅ Joiner subscribed to channel: game-${inputRoomId}`)
             addMessage(`Connected to room ${inputRoomId}! Waiting for host to start...`)
         })
         
-        channel.bind('pusher:subscription_error', (error: any) => {
+        roomChannel.bind('pusher:subscription_error', (error: any) => {
             console.error('❌ Joiner subscription error:', error)
             addMessage('Failed to subscribe to room channel!')
         })
         
-        channel.bind('client-game-event', (data: GameEvent) => {
+        roomChannel.bind('client-game-event', (data: GameEvent) => {
             console.log('📨 Joiner received game event:', data)
             handleGameEvent(data)
         })
@@ -784,7 +752,6 @@ export default function UnoGame() {
                     const playersList: Player[] = event.data.players
                     console.log('📋 Updated players list:', playersList.map((p: Player) => p.name))
                     setPlayers(playersList)
-                    // Update global room
                     const room = globalRooms.get(roomId)
                     if (room) {
                         room.players = playersList
@@ -841,12 +808,10 @@ export default function UnoGame() {
             return
         }
         
-        // Initialize game
         console.log('🎲 Initializing game...')
         let newDeck = createDeck()
         newDeck = shuffleDeck(newDeck)
         
-        // Deal cards
         const playersWithHands: Player[] = room.players.map(player => ({
             ...player,
             hand: [] as CardType[]
@@ -861,7 +826,6 @@ export default function UnoGame() {
             }
         }
         
-        // Find start card
         let startCard: CardType | null = null
         for (let i = 0; i < newDeck.length; i++) {
             if (newDeck[i].color !== 'any' && newDeck[i].value <= 9) {
@@ -890,7 +854,6 @@ export default function UnoGame() {
         room.gameState = newGameState
         globalRooms.set(roomId, room)
         
-        // Notify all players
         if (pusherChannel) {
             console.log('📤 Sending START_GAME event to all players...')
             pusherChannel.trigger('client-game-event', {
@@ -927,7 +890,6 @@ export default function UnoGame() {
                 pusherConnection.disconnect()
             }
             
-            // Remove player from room
             const room = globalRooms.get(roomId)
             if (room) {
                 room.players = room.players.filter(p => p.id !== playerId)
@@ -968,7 +930,6 @@ export default function UnoGame() {
         
         if (!isPlayable) return
         
-        // Play the card
         const newHand = player.hand.filter((_, i) => i !== cardIndex)
         const playedCard = { ...card, playedByPlayer: true, playerId }
         const newPlayPile = [...gameState.playPile, playedCard]
@@ -1019,7 +980,6 @@ export default function UnoGame() {
         setGameState(newGameState)
         setCurrentTurn(nextTurn)
         
-        // Sync with other players in multiplayer
         if (selectedMode === 'multiplayer' && pusherChannel) {
             console.log('📤 Syncing game state after card play...')
             pusherChannel.trigger('client-game-event', {
@@ -1061,7 +1021,6 @@ export default function UnoGame() {
         
         setGameState(newGameState)
         
-        // Check if drawn card can be played
         const topCard = gameState.playPile[gameState.playPile.length - 1]
         const canPlay = drawnCard.color === topCard.color ||
                        drawnCard.value === topCard.value ||
@@ -1072,7 +1031,6 @@ export default function UnoGame() {
             const nextTurn = getNextTurn(playerId, direction, updatedPlayers)
             setCurrentTurn(nextTurn)
             
-            // Sync with other players in multiplayer
             if (selectedMode === 'multiplayer' && pusherChannel) {
                 console.log('📤 Syncing game state after draw...')
                 pusherChannel.trigger('client-game-event', {
@@ -1082,7 +1040,6 @@ export default function UnoGame() {
                 })
             }
         } else {
-            // Sync with other players in multiplayer
             if (selectedMode === 'multiplayer' && pusherChannel) {
                 pusherChannel.trigger('client-game-event', {
                     type: 'SYNC_STATE',
@@ -1111,7 +1068,6 @@ export default function UnoGame() {
         const nextTurn = getNextTurn(playerId, direction, gameState.players)
         setCurrentTurn(nextTurn)
         
-        // Sync with other players in multiplayer
         if (selectedMode === 'multiplayer' && pusherChannel) {
             console.log('📤 Syncing game state after color choice...')
             pusherChannel.trigger('client-game-event', {
@@ -1135,9 +1091,9 @@ export default function UnoGame() {
     }, [])
     // #endregion
 
-    // Initialize global Pusher on mount
+    // Initialize global channel on mount
     useEffect(() => {
-        initGlobalPusher()
+        initGlobalChannel()
     }, [])
 
     // #region RENDER COMPONENTS
@@ -1462,7 +1418,6 @@ export default function UnoGame() {
         
         return (
             <main className="game-container">
-                {/* Other Players */}
                 {gameState.players.filter(p => p.id !== playerId).map((player) => (
                     <div key={player.id} className={`cpu-player ${player.position === 'top' ? 'cpu-top' : player.position === 'left' ? 'cpu-left' : 'cpu-right'}`}>
                         <div className="cpu-info">
@@ -1488,7 +1443,6 @@ export default function UnoGame() {
                     </div>
                 ))}
                 
-                {/* CENTER PLAY AREA */}
                 <div className='center-area'>
                     <div className='turn-indicator'>
                         <p className='turn-text'>
@@ -1543,7 +1497,6 @@ export default function UnoGame() {
                         </div>
                     </div>
                     
-                    {/* Chat Messages */}
                     <div style={{
                         background: 'rgba(0,0,0,0.6)',
                         padding: '1rem',
@@ -1577,7 +1530,6 @@ export default function UnoGame() {
                     </button>
                 </div>
                 
-                {/* PLAYER BOTTOM */}
                 <div className='player-bottom'>
                     <div className="player-info">
                         <div className="player-name">YOU ({currentPlayer.hand.length} cards)</div>
@@ -1606,7 +1558,6 @@ export default function UnoGame() {
                     )}
                 </div>
                 
-                {/* COLOR PICKER */}
                 {colorPickerOpen && (
                     <div className='color-picker'>
                         <p>🎨 SELECT A COLOR 🎨</p>
