@@ -1,4 +1,3 @@
-/* globals.css - Save this in your app directory */
 *,
 *::after,
 *::before {
@@ -60,6 +59,7 @@ main {
     padding: 2rem;
     border-radius: 3rem;
     backdrop-filter: blur(3px);
+    transition: background-color 0.3s ease;
 }
 
 /* Score Board */
@@ -169,6 +169,75 @@ main {
 .draw-pile:hover {
     transform: scale(1.05);
     background: rgba(0, 0, 0, 0.5);
+}
+
+/* Wild Card Color Effects */
+@keyframes colorChange {
+    0% {
+        filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.5));
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.05);
+    }
+    100% {
+        filter: drop-shadow(0 0 20px rgba(255, 255, 255, 0.8));
+        transform: scale(1);
+    }
+}
+
+.play-pile img.wild-card-red {
+    box-shadow: 0 0 20px 8px rgba(255, 6, 0, 0.9);
+    border: 3px solid rgba(255, 6, 0, 0.8);
+    transition: all 0.3s ease;
+    animation: colorChange 0.5s ease;
+}
+
+.play-pile img.wild-card-green {
+    box-shadow: 0 0 20px 8px rgba(0, 170, 69, 0.9);
+    border: 3px solid rgba(0, 170, 69, 0.8);
+    transition: all 0.3s ease;
+    animation: colorChange 0.5s ease;
+}
+
+.play-pile img.wild-card-blue {
+    box-shadow: 0 0 20px 8px rgba(0, 150, 224, 0.9);
+    border: 3px solid rgba(0, 150, 224, 0.8);
+    transition: all 0.3s ease;
+    animation: colorChange 0.5s ease;
+}
+
+.play-pile img.wild-card-yellow {
+    box-shadow: 0 0 20px 8px rgba(255, 222, 0, 0.9);
+    border: 3px solid rgba(255, 222, 0, 0.8);
+    transition: all 0.3s ease;
+    animation: colorChange 0.5s ease;
+}
+
+/* Wild card glow effect */
+.wild-card-glow {
+    position: relative;
+}
+
+.wild-card-glow::after {
+    content: '';
+    position: absolute;
+    top: -5px;
+    left: -5px;
+    right: -5px;
+    bottom: -5px;
+    border-radius: 12px;
+    pointer-events: none;
+    animation: cardPulse 1s ease-in-out infinite;
+}
+
+@keyframes cardPulse {
+    0%, 100% {
+        opacity: 0.6;
+    }
+    50% {
+        opacity: 1;
+    }
 }
 
 /* Card Images */
@@ -341,6 +410,26 @@ img {
     cursor: pointer;
     transition: all 0.2s ease;
     font-weight: bold;
+    position: relative;
+    overflow: hidden;
+}
+
+.color-picker button::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.3);
+    transform: translate(-50%, -50%);
+    transition: width 0.3s, height 0.3s;
+}
+
+.color-picker button:hover::before {
+    width: 100%;
+    height: 100%;
 }
 
 .color-picker button:hover {
