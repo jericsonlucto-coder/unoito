@@ -530,11 +530,6 @@ export default function UnoGame() {
         channel.bind('pusher:member_added', (member: any) => {
             console.log('👋 Member added:', member)
             addMessage(`Player ${member.info?.name || 'Someone'} joined the room`)
-            
-            // Request current players list from host
-            if (!isHost && member.id !== newPlayerId) {
-                channel.trigger('client-get-players', { requesterId: newPlayerId })
-            }
         })
         
         channel.bind('pusher:member_removed', (member: any) => {
@@ -594,14 +589,15 @@ export default function UnoGame() {
         
         channel.bind('pusher:subscription_succeeded', () => {
             console.log(`✅ Subscribed to presence channel: game-${inputRoomId}`)
-            
-            // Notify host about new player
-            const memberInfo = { id: newPlayerId, name: newPlayerName }
-            channel.trigger('client-player-joined', memberInfo)
-            
             setRoomId(inputRoomId)
             setGameMode('waiting')
             addMessage(`Joined room: ${inputRoomId}`)
+            
+            // Update presence with player info
+            const members = (channel as any).members
+            if (members) {
+                members.me.info = { id: newPlayerId, name: newPlayerName }
+            }
         })
         
         channel.bind('pusher:subscription_error', (error: any) => {
@@ -611,26 +607,15 @@ export default function UnoGame() {
         
         channel.bind('pusher:member_added', (member: any) => {
             console.log('👋 Member added:', member)
-        })
-        
-        channel.bind('client-players-update', (data: { players: Player[], hostId: string }) => {
-            console.log('📋 Received players update:', data.players)
-            setPlayers(data.players)
-            if (data.hostId === newPlayerId) {
-                setIsHost(true)
-            }
-        })
-        
-        channel.bind('client-player-joined', (memberInfo: { id: string, name: string }) => {
-            if (isHost) {
+            if (isHost && member.id !== newPlayerId) {
                 // Host updates player list
                 const currentPlayers = [...players]
                 const newPlayer: Player = {
-                    id: memberInfo.id,
-                    name: memberInfo.name,
+                    id: member.id,
+                    name: member.info?.name || 'Anonymous',
                     hand: [],
                     score: 0,
-                    position: ['right', 'top', 'left'][currentPlayers.length - 1] || 'right',
+                    position: getPositionForPlayer(currentPlayers.length),
                     isReady: true,
                     isOnline: true
                 }
@@ -645,6 +630,23 @@ export default function UnoGame() {
             }
         })
         
+        channel.bind('client-players-update', (data: { players: Player[], hostId: string }) => {
+            console.log('📋 Received players update:', data.players)
+            setPlayers(data.players)
+            if (data.hostId === newPlayerId) {
+                setIsHost(true)
+            }
+        })
+        
+        channel.bind('client-get-players', (data: { requesterId: string }) => {
+            if (isHost) {
+                channel.trigger('client-players-update', {
+                    players: players,
+                    hostId: playerId
+                })
+            }
+        })
+        
         channel.bind('client-game-event', (event: GameEvent) => {
             console.log('📨 Received game event:', event)
             handleGameEvent(event)
@@ -654,6 +656,11 @@ export default function UnoGame() {
         setTimeout(() => {
             channel.trigger('client-get-players', { requesterId: newPlayerId })
         }, 1000)
+    }
+
+    const getPositionForPlayer = (index: number): 'bottom' | 'top' | 'left' | 'right' => {
+        const positions: ('bottom' | 'top' | 'left' | 'right')[] = ['bottom', 'right', 'top', 'left']
+        return positions[index % positions.length]
     }
 
     const handleGameEvent = (event: GameEvent) => {
@@ -939,7 +946,7 @@ export default function UnoGame() {
     }, [])
     // #endregion
 
-    // #region RENDER COMPONENTS (Same as before)
+    // #region RENDER COMPONENTS
     const renderMenu = () => (
         <div className="menu-container" style={{
             display: 'flex',
