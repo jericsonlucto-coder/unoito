@@ -1,26 +1,667 @@
-@import "tailwindcss";
-
 :root {
-	--background: #ffffff;
-	--foreground: #171717;
-}
-
-@theme inline {
-	--color-background: var(--background);
-	--color-foreground: var(--foreground);
-	--font-sans: var(--font-geist-sans);
-	--font-mono: var(--font-geist-mono);
+    --background: #ffffff;
+    --foreground: #171717;
 }
 
 @media (prefers-color-scheme: dark) {
-	:root {
-		--background: #0a0a0a;
-		--foreground: #ededed;
-	}
+    :root {
+        --background: #0a0a0a;
+        --foreground: #ededed;
+    }
+}
+
+*,
+*::after,
+*::before {
+    margin: 0;
+    padding: 0;
+    box-sizing: inherit;
+}
+
+html {
+    font-size: 62.5%;
 }
 
 body {
-	background: var(--background);
-	color: var(--foreground);
-	font-family: Arial, Helvetica, sans-serif;
+    box-sizing: border-box;
+    background-image: linear-gradient(to bottom right, rgb(0, 0, 0), rgb(22, 109, 59));
+    background-size: cover;
+    background-attachment: fixed;
+    min-height: 100vh;
+    width: 100%;
+    font-family: 'Avenir Next', Arial, Helvetica, sans-serif;
+    background: var(--background);
+    color: var(--foreground);
+}
+
+/* Main container */
+main {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 2rem;
+}
+
+/* CPU Section */
+.cpu-box {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 5rem;
+    position: relative;
+}
+
+.cpu-hand {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+/* Play Area */
+.play-area {
+    display: flex;
+    justify-content: space-evenly;
+    align-items: center;
+    gap: 2rem;
+    margin: 3rem 0;
+    flex-wrap: wrap;
+}
+
+.score {
+    display: flex;
+    flex-direction: column;
+    margin: auto 0;
+    color: rgb(6, 37, 62);
+    font-size: x-large;
+    background: rgba(0, 0, 0, 0.5);
+    padding: 1.5rem;
+    border-radius: 1rem;
+    min-width: 150px;
+}
+
+.score p {
+    margin: 0.5rem 0;
+}
+
+#seperator {
+    margin: 10px 0;
+    border: 2px solid rgb(8, 81, 140);
+}
+
+.rules {
+    font-size: 1.2rem;
+    margin-top: 1rem;
+}
+
+.play-pile,
+.draw-pile {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.draw-pile {
+    cursor: pointer;
+    transition: transform 0.2s ease;
+}
+
+.draw-pile:hover {
+    transform: scale(1.05);
+}
+
+/* Player Section */
+.player-box {
+    display: flex;
+    justify-content: center;
+    margin-top: 5rem;
+    position: relative;
+}
+
+.player-hand {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+/* Card Images */
+img {
+    border-radius: 10px;
+    box-shadow: -7px -7px 14px #00405c;
+    transition: all 0.2s ease-in-out;
+    object-fit: cover;
+}
+
+.player-hand img {
+    transition: all 0.2s ease-in-out;
+    cursor: pointer;
+}
+
+.player-hand img:hover {
+    transform: translateY(-8px) scale(1.05);
+}
+
+.draw-pile img {
+    transition: all 0.2s ease-in-out;
+}
+
+.draw-pile img:hover {
+    transform: scale(1.05);
+}
+
+/* CPU Cards */
+.cpu-hand img {
+    box-shadow: -7px -7px 14px #00405c;
+}
+
+/* Animations */
+.player-draw {
+    animation: drawToPlayer 0.3s ease-in-out forwards;
+}
+
+.cpu-draw {
+    animation: drawToCpu 0.3s ease-in-out forwards;
+}
+
+.play-card {
+    animation: playCard 0.3s ease forwards;
+}
+
+.cpu-play-card {
+    animation: cpuPlayCard 0.3s ease forwards;
+}
+
+@keyframes drawToPlayer {
+    0% {
+        transform: translate(0, 0);
+        opacity: 1;
+    }
+    100% {
+        transform: translate(-100px, 260px);
+        opacity: 0;
+    }
+}
+
+@keyframes drawToCpu {
+    0% {
+        transform: translate(0, 0);
+        opacity: 1;
+    }
+    100% {
+        transform: translate(-100px, -260px);
+        opacity: 0;
+    }
+}
+
+@keyframes playCard {
+    0% {
+        transform: translate(0, 0);
+    }
+    100% {
+        transform: translateY(-260px);
+    }
+}
+
+@keyframes cpuPlayCard {
+    0% {
+        transform: translate(0, 0);
+    }
+    100% {
+        transform: translateY(260px);
+    }
+}
+
+/* Animation Containers */
+.player-animation,
+.cpu-animation {
+    position: absolute;
+    z-index: 2;
+    pointer-events: none;
+}
+
+.player-animation {
+    left: 50%;
+    bottom: 20%;
+    transform: translateX(-50%);
+}
+
+.cpu-animation {
+    left: 50%;
+    top: 20%;
+    transform: translateX(-50%);
+}
+
+/* UNO Shout Animation */
+.shout img {
+    transform: scale(3.5);
+    transition: all 0.1s ease-in-out;
+    border-radius: 0px;
+    box-shadow: none;
+}
+
+.player-animation img,
+.cpu-animation img {
+    border-radius: 0px;
+    box-shadow: none;
+    animation: unoPulse 0.5s ease-in-out 3;
+}
+
+@keyframes unoPulse {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.2);
+    }
+}
+
+/* End of Round Modal */
+.end-of-round {
+    position: fixed;
+    z-index: 100;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 30vw;
+    min-width: 250px;
+    margin: auto;
+    font-size: xx-large;
+    padding: 2rem;
+    border: 5px solid #00eaff;
+    border-radius: 20px;
+    background-color: rgba(0, 0, 0, 0.95);
+    text-align: center;
+    animation: modalPop 0.3s ease-out;
+}
+
+@keyframes modalPop {
+    0% {
+        transform: translate(-50%, -50%) scale(0.8);
+        opacity: 0;
+    }
+    100% {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: 1;
+    }
+}
+
+.end-of-round p {
+    color: #00eaff;
+    text-align: center;
+}
+
+/* End of Game Modal */
+.end-of-game {
+    position: fixed;
+    z-index: 100;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 40vw;
+    min-width: 300px;
+    margin: auto;
+    font-size: xx-large;
+    padding: 2rem;
+    border: 5px solid #00eaff;
+    border-radius: 20px;
+    background-color: rgba(0, 0, 0, 0.95);
+    text-align: center;
+    animation: modalPop 0.3s ease-out;
+}
+
+.end-of-game p {
+    color: #00eaff;
+    text-align: center;
+    margin-bottom: 1.5rem;
+}
+
+.end-of-game button {
+    background-color: greenyellow;
+    color: black;
+    margin-top: 10px;
+    padding: 0.5rem 1.5rem;
+    font-size: 1.6rem;
+    cursor: pointer;
+    border: none;
+    border-radius: 10px;
+    transition: all 0.2s ease;
+}
+
+.end-of-game button:hover {
+    transform: scale(1.05);
+    background-color: #7fff00;
+}
+
+/* Color Picker */
+.color-picker {
+    position: fixed;
+    z-index: 101;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    width: 60vw;
+    max-width: 400px;
+    margin: auto;
+    padding: 2rem;
+    text-align: center;
+    background: rgba(0, 0, 0, 0.95);
+    border-radius: 20px;
+    border: 3px solid #00eaff;
+    animation: modalPop 0.3s ease-out;
+}
+
+.color-picker p {
+    color: rgb(134, 174, 204);
+    font-size: large;
+    margin-bottom: 1rem;
+}
+
+.color-picker > div {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+/* Buttons */
+button {
+    height: auto;
+    min-width: 80px;
+    padding: 0.5rem 1rem;
+    color: white;
+    border-radius: 10px;
+    transition: all 0.2s ease-in-out;
+    border: none;
+    cursor: pointer;
+    font-size: 1.4rem;
+}
+
+button:hover {
+    transform: scale(1.05);
+}
+
+.red {
+    background-color: red;
+}
+
+.red:hover {
+    background-color: #ff3333;
+}
+
+.green {
+    background-color: green;
+}
+
+.green:hover {
+    background-color: #00cc00;
+}
+
+.blue {
+    background-color: blue;
+}
+
+.blue:hover {
+    background-color: #3333ff;
+}
+
+.yellow {
+    background-color: yellow;
+    color: black;
+}
+
+.yellow:hover {
+    background-color: #ffff33;
+}
+
+/* Utility Classes */
+.hidden {
+    display: none;
+}
+
+.empty {
+    width: 100px;
+    margin-left: -28px;
+    border-radius: 10px;
+    box-shadow: none;
+}
+
+/* Responsive Design */
+@media (max-width: 812px) {
+    body {
+        font-size: 14px;
+    }
+
+    main {
+        padding: 1rem;
+    }
+
+    .cpu-box {
+        margin-bottom: 2rem;
+    }
+
+    .play-area {
+        gap: 1rem;
+        margin: 2rem 0;
+    }
+
+    .play-pile img,
+    .draw-pile img {
+        width: 70px;
+        height: auto;
+    }
+
+    .score {
+        font-size: medium;
+        padding: 1rem;
+        min-width: 120px;
+    }
+
+    .score p {
+        font-size: 1.2rem;
+    }
+
+    .rules {
+        font-size: 1rem;
+    }
+
+    .player-box {
+        margin-top: 2rem;
+    }
+
+    img {
+        width: 60px;
+        height: auto;
+    }
+
+    .player-hand img:hover {
+        transform: translateY(-4px) scale(1.02);
+    }
+
+    .play-card {
+        animation: playCardMobile 0.3s ease forwards;
+    }
+
+    .cpu-play-card {
+        animation: cpuPlayCardMobile 0.3s ease forwards;
+    }
+
+    @keyframes playCardMobile {
+        0% {
+            transform: translate(0, 0);
+        }
+        100% {
+            transform: translateY(-130px);
+        }
+    }
+
+    @keyframes cpuPlayCardMobile {
+        0% {
+            transform: translate(0, 0);
+        }
+        100% {
+            transform: translateY(130px);
+        }
+    }
+
+    .shout img {
+        transform: scale(2);
+    }
+
+    .player-draw {
+        animation: drawToPlayerMobile 0.3s ease-in-out forwards;
+    }
+
+    .cpu-draw {
+        animation: drawToCpuMobile 0.3s ease-in-out forwards;
+    }
+
+    @keyframes drawToPlayerMobile {
+        0% {
+            transform: translate(0, 0);
+            opacity: 1;
+        }
+        100% {
+            transform: translate(-80px, 170px);
+            opacity: 0;
+        }
+    }
+
+    @keyframes drawToCpuMobile {
+        0% {
+            transform: translate(0, 0);
+            opacity: 1;
+        }
+        100% {
+            transform: translate(-80px, -170px);
+            opacity: 0;
+        }
+    }
+
+    .color-picker {
+        width: 80vw;
+        padding: 1.5rem;
+    }
+
+    .color-picker p {
+        font-size: medium;
+    }
+
+    .color-picker button {
+        height: auto;
+        padding: 0.4rem 1rem;
+        font-size: 1.2rem;
+        min-width: 60px;
+    }
+
+    .end-of-round,
+    .end-of-game {
+        width: 80vw;
+        font-size: large;
+        padding: 1.5rem;
+    }
+
+    .end-of-game button {
+        font-size: 1.4rem;
+        padding: 0.4rem 1rem;
+    }
+}
+
+/* Small screens */
+@media (max-width: 480px) {
+    .play-area {
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .score {
+        order: -1;
+        width: 90%;
+        text-align: center;
+    }
+
+    .play-pile,
+    .draw-pile {
+        margin: 1rem 0;
+    }
+
+    .cpu-hand,
+    .player-hand {
+        gap: 0.3rem;
+    }
+
+    img {
+        width: 50px;
+    }
+
+    button {
+        min-width: 60px;
+        font-size: 1.2rem;
+    }
+}
+
+/* Loading state */
+.loading {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    font-size: 2rem;
+    color: white;
+}
+
+/* Card container for better spacing */
+.card-container {
+    display: inline-block;
+    margin: 0 -2rem 0 0;
+}
+
+/* Hover effects for playable cards */
+.player-hand img.playable {
+    cursor: pointer;
+    filter: brightness(1.05);
+}
+
+.player-hand img.unplayable {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Turn indicator glow */
+@keyframes turnGlow {
+    0%, 100% {
+        text-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
+    }
+    50% {
+        text-shadow: 0 0 20px rgba(255, 255, 255, 0.8);
+    }
+}
+
+.cpu-score-title,
+.player-score-title {
+    transition: color 0.3s ease;
+    font-weight: bold;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #00eaff;
+    border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #00c4d4;
 }
