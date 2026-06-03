@@ -201,21 +201,24 @@ export default function UnoGame() {
         hand: CardType[],
         deck: CardType[],
         pile: CardType[]
-    ): { newHand: CardType[], newDeck: CardType[], newPlayPile: CardType[] } => {
+    ): { newHand: CardType[], newDeck: CardType[], newPlayPile: CardType[], drawnCard: CardType | null } => {
         let newDeck = [...deck]
         let newPlayPile = [...pile]
         const newHand = [...hand]
+        let drawnCard: CardType | null = null
 
         if (newDeck.length > 0) {
-            newHand.push(newDeck.shift()!)
+            drawnCard = newDeck.shift()!
+            newHand.push(drawnCard)
         } else {
             newDeck = shuffleDeck(newPlayPile.slice(0, -1))
             newPlayPile = [newPlayPile[newPlayPile.length - 1]]
-            newHand.push(newDeck.shift()!)
+            drawnCard = newDeck.shift()!
+            newHand.push(drawnCard)
         }
 
         audioManager.play('drawCard')
-        return { newHand, newDeck, newPlayPile }
+        return { newHand, newDeck, newPlayPile, drawnCard }
     }, [])
 
     const triggerUno = useCallback((playerId: string) => {
@@ -363,7 +366,7 @@ export default function UnoGame() {
 
         if (playable.length === 0) {
             // Draw a card
-            const { newHand, newDeck, newPlayPile } = drawCardLogic(
+            const { newHand, newDeck, newPlayPile, drawnCard } = drawCardLogic(
                 remaining, currentDeck, currentPlayPile
             )
             
@@ -378,6 +381,27 @@ export default function UnoGame() {
             setPlayPile(newPlayPile)
             playPileRef.current = newPlayPile
             
+            // Check if drawn card can be played immediately
+            if (drawnCard) {
+                const newTopCard = newPlayPile[newPlayPile.length - 1]
+                const canPlayDrawnCard = 
+                    drawnCard.color === newTopCard.color ||
+                    drawnCard.value === newTopCard.value ||
+                    drawnCard.color === 'any' ||
+                    newTopCard.color === 'any'
+                
+                if (canPlayDrawnCard && gameOnRef.current && currentTurnRef.current === cpuId) {
+                    // Recursively play the drawn card
+                    setTimeout(() => {
+                        if (currentTurnRef.current === cpuId && gameOnRef.current && !colorPickerRef.current) {
+                            playCPU(cpuId)
+                        }
+                    }, getCpuDelay())
+                    return
+                }
+            }
+            
+            // Cannot play drawn card, move to next player
             setCurrentTurn(getNextTurn(cpuId))
             currentTurnRef.current = getNextTurn(cpuId)
             return
@@ -566,7 +590,7 @@ export default function UnoGame() {
         if (currentTurnRef.current !== 'player' || colorPickerRef.current || !gameOnRef.current) return
 
         const player = getPlayerById('player')
-        const { newHand, newDeck, newPlayPile } = drawCardLogic(
+        const { newHand, newDeck, newPlayPile, drawnCard } = drawCardLogic(
             player.hand,
             deckRef.current,
             playPileRef.current
@@ -583,6 +607,23 @@ export default function UnoGame() {
         setPlayPile(newPlayPile)
         playPileRef.current = newPlayPile
 
+        // Check if drawn card can be played immediately
+        if (drawnCard) {
+            const topCard = newPlayPile[newPlayPile.length - 1]
+            const canPlayDrawnCard = 
+                drawnCard.color === topCard.color ||
+                drawnCard.value === topCard.value ||
+                drawnCard.color === 'any' ||
+                topCard.color === 'any'
+
+            if (canPlayDrawnCard) {
+                // Player can play the drawn card - turn stays with player
+                // Don't change turn, player can now click the card
+                return
+            }
+        }
+        
+        // Cannot play drawn card, move to next player
         const nextTurn = getNextTurn('player')
         setCurrentTurn(nextTurn)
         currentTurnRef.current = nextTurn
