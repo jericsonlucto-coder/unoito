@@ -162,6 +162,8 @@ export default function UnoGame() {
         cpu2: false,
         cpu3: false,
     })
+    // New state for turn direction
+    const [direction, setDirection] = useState<'clockwise' | 'counter-clockwise'>('clockwise')
     // #endregion
 
     // #region REFS
@@ -172,6 +174,7 @@ export default function UnoGame() {
     const currentTurnRef = useRef(currentTurn)
     const colorPickerRef = useRef(colorPickerOpen)
     const selectedWildColorRef = useRef(selectedWildColor)
+    const directionRef = useRef(direction)
 
     useEffect(() => { gameOnRef.current = gameOn }, [gameOn])
     useEffect(() => { playersRef.current = players }, [players])
@@ -180,6 +183,7 @@ export default function UnoGame() {
     useEffect(() => { currentTurnRef.current = currentTurn }, [currentTurn])
     useEffect(() => { colorPickerRef.current = colorPickerOpen }, [colorPickerOpen])
     useEffect(() => { selectedWildColorRef.current = selectedWildColor }, [selectedWildColor])
+    useEffect(() => { directionRef.current = direction }, [direction])
     // #endregion
 
     // #region AUDIO INIT
@@ -191,9 +195,18 @@ export default function UnoGame() {
     // #region HELPERS
     const getPlayerById = (id: Player['id']) => players.find(p => p.id === id)!
     
-    const getNextTurn = (current: Player['id']): Player['id'] => {
+    const getNextTurn = (current: Player['id'], currentDirection: 'clockwise' | 'counter-clockwise'): Player['id'] => {
         const currentIndex = PLAYER_ORDER.indexOf(current)
-        const nextIndex = (currentIndex + 1) % PLAYER_ORDER.length
+        let nextIndex: number
+        
+        if (currentDirection === 'clockwise') {
+            // Move forward in the array
+            nextIndex = (currentIndex + 1) % PLAYER_ORDER.length
+        } else {
+            // Move backward in the array
+            nextIndex = (currentIndex - 1 + PLAYER_ORDER.length) % PLAYER_ORDER.length
+        }
+        
         return PLAYER_ORDER[nextIndex]
     }
 
@@ -223,6 +236,8 @@ export default function UnoGame() {
         colorPickerRef.current = false
         setWildCardColor('')
         setSelectedWildColor('')
+        setDirection('clockwise')
+        directionRef.current = 'clockwise'
 
         let newDeck = createDeck()
         newDeck = shuffleDeck(newDeck)
@@ -325,6 +340,7 @@ export default function UnoGame() {
         const currentPlayPile = [...playPileRef.current]
         const currentDeck = [...deckRef.current]
         const topCard = currentPlayPile[currentPlayPile.length - 1]
+        const currentDirection = directionRef.current
 
         // Find playable cards
         const playable: CardType[] = []
@@ -393,8 +409,9 @@ export default function UnoGame() {
                 }
             }
             
-            setCurrentTurn(getNextTurn(cpuId))
-            currentTurnRef.current = getNextTurn(cpuId)
+            const nextTurn = getNextTurn(cpuId, currentDirection)
+            setCurrentTurn(nextTurn)
+            currentTurnRef.current = nextTurn
             return
         }
 
@@ -417,6 +434,7 @@ export default function UnoGame() {
         const newPlayPile = [...currentPlayPile, { ...chosenCard, playedByPlayer: false }]
         let newCpuHand = [...leftoverCards]
 
+        // Handle wild card color selection
         if (chosenCard.color === 'any' && chosenCard.drawValue === 0) {
             const colors = ['rgb(255, 6, 0)', 'rgb(0, 170, 69)', 'rgb(0, 150, 224)', 'rgb(255, 222, 0)']
             const pickedColor = colors[Math.floor(Math.random() * colors.length)]
@@ -426,9 +444,19 @@ export default function UnoGame() {
             selectedWildColorRef.current = pickedColor
         }
 
+        // Handle Reverse card - change direction
+        let newDirection = currentDirection
+        if (chosenCard.value === 11) { // Reverse card
+            newDirection = currentDirection === 'clockwise' ? 'counter-clockwise' : 'clockwise'
+            setDirection(newDirection)
+            directionRef.current = newDirection
+            audioManager.playCardSound()
+        }
+
+        // Apply draw card penalty to next player
         if (chosenCard.drawValue > 0) {
             audioManager.play('plusCard')
-            const nextPlayerId = getNextTurn(cpuId)
+            const nextPlayerId = getNextTurn(cpuId, newDirection)
             let nextPlayer = getPlayerById(nextPlayerId)
             let updatedHand = [...nextPlayer.hand]
             let updatedDeck = [...currentDeck]
@@ -488,7 +516,14 @@ export default function UnoGame() {
             return
         }
 
-        const nextTurn = chosenCard.changeTurn ? getNextTurn(getNextTurn(cpuId)) : getNextTurn(cpuId)
+        // Determine next turn
+        let nextTurn: Player['id']
+        if (chosenCard.value === 10) { // Skip card
+            nextTurn = getNextTurn(getNextTurn(cpuId, newDirection), newDirection)
+        } else {
+            nextTurn = getNextTurn(cpuId, newDirection)
+        }
+        
         setCurrentTurn(nextTurn)
         currentTurnRef.current = nextTurn
     }, [triggerUno, checkForWinner, getCpuDelay])
@@ -502,6 +537,7 @@ export default function UnoGame() {
         const currentPlayPile = [...playPileRef.current]
         const topCard = currentPlayPile[currentPlayPile.length - 1]
         const card = player.hand[index]
+        const currentDirection = directionRef.current
 
         const isPlayable =
             card.value === topCard.value ||
@@ -516,6 +552,14 @@ export default function UnoGame() {
         const newPlayerHand = player.hand.filter((_, i) => i !== index)
         const playedCard = { ...card, playedByPlayer: true }
         const newPlayPile = [...currentPlayPile, playedCard]
+
+        // Handle Reverse card - change direction
+        let newDirection = currentDirection
+        if (playedCard.value === 11) { // Reverse card
+            newDirection = currentDirection === 'clockwise' ? 'counter-clockwise' : 'clockwise'
+            setDirection(newDirection)
+            directionRef.current = newDirection
+        }
 
         const updatedPlayers = playersRef.current.map(p =>
             p.id === 'player' ? { ...p, hand: newPlayerHand } : p
@@ -536,9 +580,10 @@ export default function UnoGame() {
             triggerUno('player')
         }
 
+        // Apply draw card penalty to next player
         if (playedCard.drawValue > 0) {
             audioManager.play('plusCard')
-            const nextPlayerId = getNextTurn('player')
+            const nextPlayerId = getNextTurn('player', newDirection)
             let nextPlayer = getPlayerById(nextPlayerId)
             let updatedHand = [...nextPlayer.hand]
             let updatedDeck = [...deckRef.current]
@@ -585,13 +630,21 @@ export default function UnoGame() {
             return
         }
 
+        // Handle wild card
         if (playedCard.color === 'any' && playedCard.drawValue === 0) {
             setColorPickerOpen(true)
             colorPickerRef.current = true
             return
         }
 
-        const nextTurn = playedCard.changeTurn ? getNextTurn(getNextTurn('player')) : getNextTurn('player')
+        // Determine next turn
+        let nextTurn: Player['id']
+        if (playedCard.value === 10) { // Skip card
+            nextTurn = getNextTurn(getNextTurn('player', newDirection), newDirection)
+        } else {
+            nextTurn = getNextTurn('player', newDirection)
+        }
+        
         setCurrentTurn(nextTurn)
         currentTurnRef.current = nextTurn
     }, [triggerUno, checkForWinner])
@@ -601,15 +654,15 @@ export default function UnoGame() {
 
         console.log("=== DRAW CARD DEBUG ===")
         
-        // Get the current player from state, not from ref
+        // Get the current player from state
         const currentPlayers = players
         const player = currentPlayers.find(p => p.id === 'player')!
         
         console.log("Current hand BEFORE draw:", player.hand.length)
-        console.log("Current hand cards:", player.hand.map(c => ({ color: c.color, value: c.value })))
         
         const currentDeck = [...deckRef.current]
         const currentPlayPile = [...playPileRef.current]
+        const currentDirection = directionRef.current
         
         let newDeck = [...currentDeck]
         let newPlayPile = [...currentPlayPile]
@@ -617,30 +670,22 @@ export default function UnoGame() {
         
         // Create a new hand array with all existing cards
         let newPlayerHand = [...player.hand]
-        console.log("Copied hand length before push:", newPlayerHand.length)
 
         if (newDeck.length > 0) {
             drawnCard = newDeck.shift()!
-            console.log("Drawn card:", { color: drawnCard.color, value: drawnCard.value })
             newPlayerHand.push(drawnCard)
-            console.log("Hand AFTER push:", newPlayerHand.length)
         } else if (newPlayPile.length > 1) {
-            console.log("Deck empty, reshuffling...")
             const cardsToShuffle = newPlayPile.slice(0, -1)
             newDeck = shuffleDeck(cardsToShuffle)
             newPlayPile = [newPlayPile[newPlayPile.length - 1]]
             drawnCard = newDeck.shift()!
             newPlayerHand.push(drawnCard)
-            console.log("Hand AFTER reshuffle push:", newPlayerHand.length)
         } else {
             console.error("No cards available to draw!")
             return
         }
 
         audioManager.play('drawCard')
-
-        console.log("Final hand before updating state:", newPlayerHand.length)
-        console.log("Final hand cards:", newPlayerHand.map(c => ({ color: c.color, value: c.value })))
 
         // Update the player with the expanded hand
         const updatedPlayers = players.map(p =>
@@ -665,18 +710,16 @@ export default function UnoGame() {
 
             if (canPlayDrawnCard) {
                 console.log("Drawn card can be played - turn stays with player")
-                console.log("=== END DRAW DEBUG ===")
                 return
             }
         }
         
         // Cannot play drawn card, move to next player
         console.log("Cannot play drawn card - moving to next player")
-        const nextTurn = getNextTurn('player')
+        const nextTurn = getNextTurn('player', currentDirection)
         setCurrentTurn(nextTurn)
         currentTurnRef.current = nextTurn
-        console.log("=== END DRAW DEBUG ===")
-    }, [players]) // Add players as dependency
+    }, [players])
 
     const handleColorChosen = useCallback((color: string, colorName: string) => {
         audioManager.play('colorButton')
@@ -697,7 +740,8 @@ export default function UnoGame() {
         setSelectedWildColor(color)
         selectedWildColorRef.current = color
 
-        const nextTurn = getNextTurn('player')
+        // After wild card, move to next player based on current direction
+        const nextTurn = getNextTurn('player', directionRef.current)
         setCurrentTurn(nextTurn)
         currentTurnRef.current = nextTurn
     }, [])
@@ -759,6 +803,11 @@ export default function UnoGame() {
             case 'right': return 'cpu-right'
             default: return ''
         }
+    }
+
+    // Helper to get direction arrow
+    const getDirectionArrow = () => {
+        return direction === 'clockwise' ? '🔄 →' : '🔄 ←'
     }
 
     // #region JSX
@@ -844,9 +893,9 @@ export default function UnoGame() {
                 <div className='turn-indicator'>
                     <p className='turn-text'>
                         {currentTurn === 'player' ? (
-                            <span className='turn-player'>🎮 YOUR TURN 🎮</span>
+                            <span className='turn-player'>🎮 YOUR TURN 🎮 {getDirectionArrow()}</span>
                         ) : (
-                            <span className='turn-cpu'>🤖 {getPlayerById(currentTurn).name}'s TURN 🤖</span>
+                            <span className='turn-cpu'>🤖 {getPlayerById(currentTurn).name}'s TURN 🤖 {getDirectionArrow()}</span>
                         )}
                     </p>
                 </div>
