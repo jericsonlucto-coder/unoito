@@ -171,7 +171,7 @@ main {
     background: rgba(0, 0, 0, 0.5);
 }
 
-/* Wild Card Color Effects */
+/* Wild Card Color Effects - FIXED */
 @keyframes colorChange {
     0% {
         filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.5));
@@ -186,58 +186,79 @@ main {
     }
 }
 
-.play-pile img.wild-card-red {
-    box-shadow: 0 0 20px 8px rgba(255, 6, 0, 0.9);
-    border: 3px solid rgba(255, 6, 0, 0.8);
+/* Base wild card style */
+.play-pile .wild-card-red,
+.play-pile .wild-card-green,
+.play-pile .wild-card-blue,
+.play-pile .wild-card-yellow {
+    position: relative;
     transition: all 0.3s ease;
     animation: colorChange 0.5s ease;
+    border-radius: 10px;
 }
 
-.play-pile img.wild-card-green {
-    box-shadow: 0 0 20px 8px rgba(0, 170, 69, 0.9);
-    border: 3px solid rgba(0, 170, 69, 0.8);
-    transition: all 0.3s ease;
-    animation: colorChange 0.5s ease;
+.play-pile .wild-card-red {
+    box-shadow: 0 0 25px 10px rgba(255, 6, 0, 0.9), 0 0 5px 2px rgba(255, 6, 0, 0.5);
+    border: 3px solid rgba(255, 6, 0, 0.9);
+    filter: brightness(1.05);
 }
 
-.play-pile img.wild-card-blue {
-    box-shadow: 0 0 20px 8px rgba(0, 150, 224, 0.9);
-    border: 3px solid rgba(0, 150, 224, 0.8);
-    transition: all 0.3s ease;
-    animation: colorChange 0.5s ease;
+.play-pile .wild-card-green {
+    box-shadow: 0 0 25px 10px rgba(0, 170, 69, 0.9), 0 0 5px 2px rgba(0, 170, 69, 0.5);
+    border: 3px solid rgba(0, 170, 69, 0.9);
+    filter: brightness(1.05);
 }
 
-.play-pile img.wild-card-yellow {
-    box-shadow: 0 0 20px 8px rgba(255, 222, 0, 0.9);
-    border: 3px solid rgba(255, 222, 0, 0.8);
-    transition: all 0.3s ease;
-    animation: colorChange 0.5s ease;
+.play-pile .wild-card-blue {
+    box-shadow: 0 0 25px 10px rgba(0, 150, 224, 0.9), 0 0 5px 2px rgba(0, 150, 224, 0.5);
+    border: 3px solid rgba(0, 150, 224, 0.9);
+    filter: brightness(1.05);
 }
 
-/* Wild card glow effect */
+.play-pile .wild-card-yellow {
+    box-shadow: 0 0 25px 10px rgba(255, 222, 0, 0.9), 0 0 5px 2px rgba(255, 222, 0, 0.5);
+    border: 3px solid rgba(255, 222, 0, 0.9);
+    filter: brightness(1.05);
+}
+
+/* Wild card glow effect - FIXED */
 .wild-card-glow {
     position: relative;
+    display: inline-block;
 }
 
-.wild-card-glow::after {
+.wild-card-glow::before {
     content: '';
     position: absolute;
-    top: -5px;
-    left: -5px;
-    right: -5px;
-    bottom: -5px;
-    border-radius: 12px;
+    top: -8px;
+    left: -8px;
+    right: -8px;
+    bottom: -8px;
+    border-radius: 15px;
+    background: radial-gradient(circle, rgba(255,215,0,0.3), transparent);
     pointer-events: none;
-    animation: cardPulse 1s ease-in-out infinite;
+    z-index: 1;
+    animation: glowPulse 1.5s ease-in-out infinite;
 }
 
-@keyframes cardPulse {
+@keyframes glowPulse {
     0%, 100% {
-        opacity: 0.6;
+        opacity: 0.4;
+        transform: scale(0.98);
     }
     50% {
-        opacity: 1;
+        opacity: 0.8;
+        transform: scale(1.02);
     }
+}
+
+/* Additional glow for wild card images */
+.play-pile .wild-card-red,
+.play-pile .wild-card-green,
+.play-pile .wild-card-blue,
+.play-pile .wild-card-yellow {
+    position: relative;
+    z-index: 2;
 }
 
 /* Card Images */
@@ -248,6 +269,12 @@ img {
     object-fit: cover;
 }
 
+/* Specific style for play pile images */
+.play-pile img {
+    border-radius: 0.8rem;
+}
+
+/* Player hand images */
 .player-hand img {
     cursor: pointer;
     transition: all 0.2s ease;
@@ -465,6 +492,28 @@ img {
     flex-wrap: wrap;
 }
 
+/* Wild card text indicator */
+.wild-color-indicator {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 2px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: bold;
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
 /* Responsive Design */
 @media (max-width: 812px) {
     html {
@@ -518,6 +567,13 @@ img {
     .end-of-round p,
     .end-of-game p {
         font-size: 1.4rem;
+    }
+    
+    .play-pile .wild-card-red,
+    .play-pile .wild-card-green,
+    .play-pile .wild-card-blue,
+    .play-pile .wild-card-yellow {
+        box-shadow: 0 0 15px 5px rgba(0, 0, 0, 0.7);
     }
 }
 
