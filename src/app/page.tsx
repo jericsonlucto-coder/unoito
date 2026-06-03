@@ -60,7 +60,10 @@ const createCard = (rgb: string, color: string, deck: CardType[]): void => {
         } else if (i > 0 && i <= 9) {
             deck.push(new Card(rgb, i, i, true, 0, `/images/${color}${i}.png`))
             deck.push(new Card(rgb, i, i, true, 0, `/images/${color}${i}.png`))
-        } else if (i === 10 || i === 11) {
+        } else if (i === 10) { // Skip card (value 10)
+            deck.push(new Card(rgb, i, 20, false, 0, `/images/${color}${i}.png`))
+            deck.push(new Card(rgb, i, 20, false, 0, `/images/${color}${i}.png`))
+        } else if (i === 11) { // Reverse card (value 11)
             deck.push(new Card(rgb, i, 20, false, 0, `/images/${color}${i}.png`))
             deck.push(new Card(rgb, i, 20, false, 0, `/images/${color}${i}.png`))
         } else if (i === 12) {
@@ -446,7 +449,7 @@ export default function UnoGame() {
             selectedWildColorRef.current = pickedColor
         }
 
-        // Handle Reverse card - change direction
+        // Handle Reverse card (value 11) - change direction
         let newDirection = currentDirection
         if (chosenCard.value === 11) { // Reverse card
             newDirection = currentDirection === 'clockwise' ? 'counter-clockwise' : 'clockwise'
@@ -518,7 +521,7 @@ export default function UnoGame() {
             return
         }
 
-        // Determine next turn (Skip card jumps over next player)
+        // Handle Skip card (value 10) - jumps over next player
         let nextTurn: Player['id']
         if (chosenCard.value === 10) { // Skip card
             nextTurn = getNextTurn(getNextTurn(cpuId, newDirection), newDirection)
@@ -555,7 +558,7 @@ export default function UnoGame() {
         const playedCard = { ...card, playedByPlayer: true }
         const newPlayPile = [...currentPlayPile, playedCard]
 
-        // Handle Reverse card - change direction
+        // Handle Reverse card (value 11) - change direction
         let newDirection = currentDirection
         if (playedCard.value === 11) { // Reverse card
             newDirection = currentDirection === 'clockwise' ? 'counter-clockwise' : 'clockwise'
@@ -639,7 +642,7 @@ export default function UnoGame() {
             return
         }
 
-        // Determine next turn (Skip card jumps over next player)
+        // Handle Skip card (value 10) - jumps over next player
         let nextTurn: Player['id']
         if (playedCard.value === 10) { // Skip card
             nextTurn = getNextTurn(getNextTurn('player', newDirection), newDirection)
@@ -778,8 +781,8 @@ export default function UnoGame() {
             'rgb(255, 222, 0)': 'Yellow'
         }
         const valueNames: Record<number, string> = {
-            10: 'Reverse',
-            11: 'Skip',
+            10: 'Skip',
+            11: 'Reverse',
             12: 'Draw 2',
             13: 'Wild Card',
             14: 'Wild Draw 4'
