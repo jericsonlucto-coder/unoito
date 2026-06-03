@@ -46,7 +46,7 @@ interface GameState {
 }
 
 interface GameEvent {
-    type: 'PLAY_CARD' | 'DRAW_CARD' | 'COLOR_CHOSEN' | 'UNO' | 'PLAYER_READY' | 'PLAYER_JOINED' | 'PLAYER_LEFT' | 'START_GAME'
+    type: 'PLAY_CARD' | 'DRAW_CARD' | 'COLOR_CHOSEN' | 'UNO' | 'PLAYER_READY' | 'PLAYER_JOINED' | 'PLAYER_LEFT' | 'START_GAME' | 'SYNC_STATE'
     playerId: string
     playerName?: string
     data: any
@@ -167,12 +167,24 @@ class AudioManager {
 const audioManager = new AudioManager()
 // #endregion
 
-// Storage for game rooms (in memory)
-const gameRooms: Map<string, {
+// Global room storage (shared across tabs via localStorage)
+let globalRooms: Map<string, {
     players: Player[]
     gameState: GameState | null
     createdAt: number
+    hostId: string
 }> = new Map()
+
+// Load rooms from localStorage
+if (typeof window !== 'undefined') {
+    const saved = localStorage.getItem('uno_rooms')
+    if (saved) {
+        try {
+            const parsed = JSON.parse(saved)
+            globalRooms = new Map(parsed)
+        } catch (e) {}
+    }
+}
 
 export default function UnoGame() {
 
@@ -192,6 +204,7 @@ export default function UnoGame() {
     const [selectedWildColor, setSelectedWildColor] = useState<string>('')
     const [messages, setMessages] = useState<string[]>([])
     const [pusherChannel, setPusherChannel] = useState<any>(null)
+    const [isHost, setIsHost] = useState(false)
     // #endregion
 
     // #region REFS
@@ -229,6 +242,13 @@ export default function UnoGame() {
         const link = `${window.location.origin}?room=${roomId}`
         navigator.clipboard.writeText(link)
         addMessage('Invite link copied to clipboard!')
+    }
+
+    const saveRoomsToStorage = () => {
+        if (typeof window !== 'undefined') {
+            const roomsArray = Array.from(globalRooms.entries())
+            localStorage.setItem('uno_rooms', JSON.stringify(roomsArray))
+        }
     }
 
     const getNextTurn = (current: string, currentDirection: 'clockwise' | 'counter-clockwise', playerList: Player[]): string => {
@@ -476,8 +496,9 @@ export default function UnoGame() {
         
         setPlayerId(newPlayerId)
         setRoomId(newRoomId)
+        setIsHost(true)
         
-        // Store room in memory
+        // Store room in global map
         const newPlayer: Player = {
             id: newPlayerId,
             name: newPlayerName,
@@ -488,21 +509,27 @@ export default function UnoGame() {
             isOnline: true
         }
         
-        gameRooms.set(newRoomId, {
+        globalRooms.set(newRoomId, {
             players: [newPlayer],
             gameState: null,
-            createdAt: Date.now()
+            createdAt: Date.now(),
+            hostId: newPlayerId
         })
+        saveRoomsToStorage()
         
-        // Initialize Pusher
+        // Initialize Pusher for real-time updates
         const pusher = new Pusher(PUSHER_CONFIG.key, {
             cluster: PUSHER_CONFIG.cluster
         })
         
-        const channel = pusher.subscribe(`game-${newRoomId}`)
+        const channel = pusher.subscribe(`presence-game-${newRoomId}`)
         setPusherChannel(channel)
         
-        channel.bind('game-event', (data: GameEvent) => {
+        channel.bind('pusher:subscription_succeeded', () => {
+            console.log('Connected to room channel')
+        })
+        
+        channel.bind('client-game-event', (data: GameEvent) => {
             handleGameEvent(data)
         })
         
@@ -518,7 +545,9 @@ export default function UnoGame() {
             return
         }
         
-        const room = gameRooms.get(roomId.toUpperCase())
+        const upperRoomId = roomId.toUpperCase()
+        const room = globalRooms.get(upperRoomId)
+        
         if (!room) {
             addMessage('Room not found! Please check the room code.')
             return
@@ -533,6 +562,7 @@ export default function UnoGame() {
         const newPlayerName = playerName || `Player_${newPlayerId.slice(-4)}`
         
         setPlayerId(newPlayerId)
+        setIsHost(false)
         
         // Add player to room
         const positions = ['right', 'top', 'left'] as const
@@ -549,17 +579,22 @@ export default function UnoGame() {
         }
         
         room.players.push(newPlayer)
-        gameRooms.set(roomId.toUpperCase(), room)
+        globalRooms.set(upperRoomId, room)
+        saveRoomsToStorage()
         
         // Initialize Pusher
         const pusher = new Pusher(PUSHER_CONFIG.key, {
             cluster: PUSHER_CONFIG.cluster
         })
         
-        const channel = pusher.subscribe(`game-${roomId.toUpperCase()}`)
+        const channel = pusher.subscribe(`presence-game-${upperRoomId}`)
         setPusherChannel(channel)
         
-        channel.bind('game-event', (data: GameEvent) => {
+        channel.bind('pusher:subscription_succeeded', () => {
+            console.log('Connected to room channel')
+        })
+        
+        channel.bind('client-game-event', (data: GameEvent) => {
             handleGameEvent(data)
         })
         
@@ -573,15 +608,24 @@ export default function UnoGame() {
         
         setPlayers(room.players)
         setGameMode('waiting')
-        addMessage(`Joined room: ${roomId.toUpperCase()}`)
+        addMessage(`Joined room: ${upperRoomId}`)
     }
 
     const handleGameEvent = (event: GameEvent) => {
+        console.log('Game event received:', event)
+        
         switch(event.type) {
             case 'PLAYER_JOINED':
                 addMessage(`${event.playerName} joined the game`)
                 if (event.data?.players) {
                     setPlayers(event.data.players)
+                    // Update global room
+                    const room = globalRooms.get(roomId)
+                    if (room) {
+                        room.players = event.data.players
+                        globalRooms.set(roomId, room)
+                        saveRoomsToStorage()
+                    }
                 }
                 break
             case 'PLAYER_LEFT':
@@ -596,13 +640,20 @@ export default function UnoGame() {
                     addMessage('Game started! Good luck!')
                 }
                 break
+            case 'SYNC_STATE':
+                if (event.data?.gameState) {
+                    setGameState(event.data.gameState)
+                    setCurrentTurn(event.data.gameState.currentTurn)
+                    setDirection(event.data.gameState.direction)
+                }
+                break
             default:
                 break
         }
     }
 
     const startMultiplayerGame = () => {
-        const room = gameRooms.get(roomId)
+        const room = globalRooms.get(roomId)
         if (!room || room.players.length < 2) {
             addMessage('Need at least 2 players to start!')
             return
@@ -620,7 +671,8 @@ export default function UnoGame() {
         
         for (let i = 0; i < 7; i++) {
             for (let j = 0; j < playersWithHands.length; j++) {
-                playersWithHands[j].hand.push(newDeck.shift()!)
+                const card = newDeck.shift()
+                if (card) playersWithHands[j].hand.push(card)
             }
         }
         
@@ -645,7 +697,8 @@ export default function UnoGame() {
         }
         
         room.gameState = newGameState
-        gameRooms.set(roomId, room)
+        globalRooms.set(roomId, room)
+        saveRoomsToStorage()
         
         // Notify all players
         if (pusherChannel) {
@@ -665,18 +718,32 @@ export default function UnoGame() {
 
     const leaveRoom = () => {
         if (roomId && pusherChannel) {
+            const player = players.find(p => p.id === playerId)
             pusherChannel.trigger('client-game-event', {
                 type: 'PLAYER_LEFT',
                 playerId: playerId,
-                playerName: players.find(p => p.id === playerId)?.name,
+                playerName: player?.name,
                 data: {}
             })
             pusherChannel.unsubscribe()
+            
+            // Remove player from room
+            const room = globalRooms.get(roomId)
+            if (room) {
+                room.players = room.players.filter(p => p.id !== playerId)
+                if (room.players.length === 0) {
+                    globalRooms.delete(roomId)
+                } else {
+                    globalRooms.set(roomId, room)
+                }
+                saveRoomsToStorage()
+            }
         }
         setGameMode('menu')
         setRoomId('')
         setPlayers([])
         setMessages([])
+        setIsHost(false)
     }
     // #endregion
 
@@ -734,13 +801,24 @@ export default function UnoGame() {
             addMessage(`You said UNO!`)
         }
         
-        setGameState({
+        const newGameState = {
             ...gameState,
             players: updatedPlayers,
             playPile: newPlayPile,
             deck: newDeck
-        })
+        }
+        
+        setGameState(newGameState)
         setCurrentTurn(nextTurn)
+        
+        // Sync with other players in multiplayer
+        if (selectedMode === 'multiplayer' && pusherChannel) {
+            pusherChannel.trigger('client-game-event', {
+                type: 'SYNC_STATE',
+                playerId: playerId,
+                data: { gameState: newGameState }
+            })
+        }
         
         if (card.color === 'any' && card.drawValue === 0) {
             setColorPickerOpen(true)
@@ -764,11 +842,13 @@ export default function UnoGame() {
         audioManager.play('drawCard')
         addMessage(`You drew a card`)
         
-        setGameState({
+        const newGameState = {
             ...gameState,
             players: updatedPlayers,
             deck: newDeck
-        })
+        }
+        
+        setGameState(newGameState)
         
         // Check if drawn card can be played
         const topCard = gameState.playPile[gameState.playPile.length - 1]
@@ -780,6 +860,24 @@ export default function UnoGame() {
         if (!canPlay) {
             const nextTurn = getNextTurn(playerId, direction, updatedPlayers)
             setCurrentTurn(nextTurn)
+            
+            // Sync with other players in multiplayer
+            if (selectedMode === 'multiplayer' && pusherChannel) {
+                pusherChannel.trigger('client-game-event', {
+                    type: 'SYNC_STATE',
+                    playerId: playerId,
+                    data: { gameState: { ...newGameState, currentTurn: nextTurn } }
+                })
+            }
+        } else {
+            // Sync with other players in multiplayer
+            if (selectedMode === 'multiplayer' && pusherChannel) {
+                pusherChannel.trigger('client-game-event', {
+                    type: 'SYNC_STATE',
+                    playerId: playerId,
+                    data: { gameState: newGameState }
+                })
+            }
         }
     }
 
@@ -789,15 +887,26 @@ export default function UnoGame() {
         const newPlayPile = [...gameState.playPile]
         newPlayPile[newPlayPile.length - 1].color = color
         
-        setGameState({
+        const newGameState = {
             ...gameState,
             playPile: newPlayPile
-        })
+        }
+        
+        setGameState(newGameState)
         setColorPickerOpen(false)
         setSelectedWildColor(color)
         
         const nextTurn = getNextTurn(playerId, direction, gameState.players)
         setCurrentTurn(nextTurn)
+        
+        // Sync with other players in multiplayer
+        if (selectedMode === 'multiplayer' && pusherChannel) {
+            pusherChannel.trigger('client-game-event', {
+                type: 'SYNC_STATE',
+                playerId: playerId,
+                data: { gameState: newGameState }
+            })
+        }
     }
     // #endregion
 
@@ -1058,6 +1167,7 @@ export default function UnoGame() {
                         }}>
                             <span>{player.name}</span>
                             <span>{player.id === playerId ? '(You)' : ''}</span>
+                            <span>{player.id === playerId && isHost ? '👑 Host' : ''}</span>
                             <span>{player.isReady ? '✅ Ready' : '⏳ Waiting'}</span>
                         </div>
                     ))}
@@ -1079,22 +1189,24 @@ export default function UnoGame() {
                 </div>
                 
                 <div style={{ display: 'flex', gap: '1rem' }}>
-                    <button
-                        onClick={startMultiplayerGame}
-                        style={{
-                            flex: 1,
-                            padding: '1rem 2rem',
-                            fontSize: '1.2rem',
-                            background: players.length >= 2 ? '#4caf50' : '#666',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '0.5rem',
-                            cursor: players.length >= 2 ? 'pointer' : 'not-allowed'
-                        }}
-                        disabled={players.length < 2}
-                    >
-                        {players.length >= 2 ? 'Start Game 🚀' : `Waiting for ${2 - players.length} more player(s)...`}
-                    </button>
+                    {isHost && (
+                        <button
+                            onClick={startMultiplayerGame}
+                            style={{
+                                flex: 1,
+                                padding: '1rem 2rem',
+                                fontSize: '1.2rem',
+                                background: players.length >= 2 ? '#4caf50' : '#666',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '0.5rem',
+                                cursor: players.length >= 2 ? 'pointer' : 'not-allowed'
+                            }}
+                            disabled={players.length < 2}
+                        >
+                            {players.length >= 2 ? 'Start Game 🚀' : `Waiting for ${2 - players.length} more player(s)...`}
+                        </button>
+                    )}
                     
                     <button
                         onClick={leaveRoom}
@@ -1111,6 +1223,12 @@ export default function UnoGame() {
                         Leave Room
                     </button>
                 </div>
+                
+                {!isHost && players.length >= 2 && (
+                    <p style={{ marginTop: '1rem', fontSize: '0.9rem', color: '#ffd700' }}>
+                        Waiting for host to start the game...
+                    </p>
+                )}
             </div>
         </div>
     )
