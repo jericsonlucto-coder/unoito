@@ -204,14 +204,18 @@ export default function UnoGame() {
     ): { newHand: CardType[], newDeck: CardType[], newPlayPile: CardType[], drawnCard: CardType | null } => {
         let newDeck = [...deck]
         let newPlayPile = [...pile]
-        const newHand = [...hand]
         let drawnCard: CardType | null = null
+        
+        // IMPORTANT: Create a copy of the hand array
+        let newHand = [...hand]
 
         if (newDeck.length > 0) {
             drawnCard = newDeck.shift()!
             newHand.push(drawnCard)
         } else {
-            newDeck = shuffleDeck(newPlayPile.slice(0, -1))
+            // Reshuffle the play pile (excluding the top card)
+            const cardsToShuffle = newPlayPile.slice(0, -1)
+            newDeck = shuffleDeck(cardsToShuffle)
             newPlayPile = [newPlayPile[newPlayPile.length - 1]]
             drawnCard = newDeck.shift()!
             newHand.push(drawnCard)
