@@ -159,6 +159,7 @@ export default function UnoGame() {
     const colorPickerRef   = useRef(colorPickerOpen)
     const cpuScoreRef      = useRef(cpuScore)
     const playerScoreRef   = useRef(playerScore)
+    const wildCardColorRef = useRef(wildCardColor)
 
     useEffect(() => { playerTurnRef.current  = playerTurn    }, [playerTurn])
     useEffect(() => { gameOnRef.current      = gameOn        }, [gameOn])
@@ -169,6 +170,7 @@ export default function UnoGame() {
     useEffect(() => { colorPickerRef.current = colorPickerOpen }, [colorPickerOpen])
     useEffect(() => { cpuScoreRef.current    = cpuScore      }, [cpuScore])
     useEffect(() => { playerScoreRef.current = playerScore   }, [playerScore])
+    useEffect(() => { wildCardColorRef.current = wildCardColor }, [wildCardColor])
     // #endregion
 
     // #region AUDIO INIT
@@ -225,6 +227,7 @@ export default function UnoGame() {
         gameOnRef.current = true
         setColorPickerOpen(false)
         colorPickerRef.current = false
+        setWildCardColor('') // Reset wild card color on new hand
 
         let newDeck = createDeck()
         newDeck = shuffleDeck(newDeck)
@@ -405,9 +408,9 @@ export default function UnoGame() {
                 }
                 const pickedColor = colors[counts.indexOf(Math.max(...counts))]
                 newPlayPile[newPlayPile.length - 1].color = pickedColor
-                // Show visual effect for CPU's wild card
+                // Keep the wild card color effect until a new card is played
                 setWildCardColor(pickedColor)
-                setTimeout(() => setWildCardColor(''), 1000)
+                wildCardColorRef.current = pickedColor
             }
 
             setPlayPile(newPlayPile)
@@ -489,6 +492,12 @@ export default function UnoGame() {
         playerHandRef.current = newPlayerHand
         setPlayPile(newPlayPile)
         playPileRef.current = newPlayPile
+
+        // Reset wild card color when a new card is played (unless the new card is also a wild card)
+        if (playedCard.color !== 'any') {
+            setWildCardColor('')
+            wildCardColorRef.current = ''
+        }
 
         if (newPlayerHand.length === 1) triggerUno('player')
 
@@ -580,8 +589,9 @@ export default function UnoGame() {
         setColorPickerOpen(false)
         colorPickerRef.current = false
         
-        // Set the wild card color for visual effect
+        // Set the wild card color - this will persist until a new card is played
         setWildCardColor(color)
+        wildCardColorRef.current = color
         
         // Create a temporary flash effect on the play area
         const playArea = document.querySelector('.play-area') as HTMLElement
@@ -610,11 +620,6 @@ export default function UnoGame() {
         setPlayerTurn(false)
         playerTurnRef.current = false
         
-        // Remove the color effect after animation
-        setTimeout(() => {
-            setWildCardColor('')
-        }, 1000)
-        
         setTimeout(playCPU, getCpuDelay())
     }, [playCPU, getCpuDelay])
     // #endregion
@@ -627,6 +632,7 @@ export default function UnoGame() {
         setCpuScore(0)
         playerScoreRef.current = 0
         cpuScoreRef.current    = 0
+        setWildCardColor('')
         newHand()
     }, [newHand])
     // #endregion
@@ -725,9 +731,12 @@ export default function UnoGame() {
 
     // Helper to get wild card CSS class
     const getWildCardClass = (card: CardType) => {
-        if (card.color !== 'any' || !wildCardColor) return ''
+        // Use the stored wildCardColor state for persistent color effect
+        const activeColor = wildCardColor
         
-        switch(wildCardColor) {
+        if (card.color !== 'any' || !activeColor) return ''
+        
+        switch(activeColor) {
             case 'rgb(255, 6, 0)': return 'wild-card-red'
             case 'rgb(0, 170, 69)': return 'wild-card-green'
             case 'rgb(0, 150, 224)': return 'wild-card-blue'
@@ -896,7 +905,7 @@ export default function UnoGame() {
                             className='red' 
                             onClick={() => handleColorChosen('rgb(255, 6, 0)', 'red')}
                             onMouseEnter={() => setWildCardColor('rgb(255, 6, 0)')}
-                            onMouseLeave={() => setWildCardColor('')}
+                            onMouseLeave={() => setWildCardColor(wildCardColorRef.current)}
                         >
                             🔴 RED
                         </button>
@@ -904,7 +913,7 @@ export default function UnoGame() {
                             className='green' 
                             onClick={() => handleColorChosen('rgb(0, 170, 69)', 'green')}
                             onMouseEnter={() => setWildCardColor('rgb(0, 170, 69)')}
-                            onMouseLeave={() => setWildCardColor('')}
+                            onMouseLeave={() => setWildCardColor(wildCardColorRef.current)}
                         >
                             🟢 GREEN
                         </button>
@@ -912,7 +921,7 @@ export default function UnoGame() {
                             className='blue' 
                             onClick={() => handleColorChosen('rgb(0, 150, 224)', 'blue')}
                             onMouseEnter={() => setWildCardColor('rgb(0, 150, 224)')}
-                            onMouseLeave={() => setWildCardColor('')}
+                            onMouseLeave={() => setWildCardColor(wildCardColorRef.current)}
                         >
                             🔵 BLUE
                         </button>
@@ -920,7 +929,7 @@ export default function UnoGame() {
                             className='yellow' 
                             onClick={() => handleColorChosen('rgb(255, 222, 0)', 'yellow')}
                             onMouseEnter={() => setWildCardColor('rgb(255, 222, 0)')}
-                            onMouseLeave={() => setWildCardColor('')}
+                            onMouseLeave={() => setWildCardColor(wildCardColorRef.current)}
                         >
                             🟡 YELLOW
                         </button>
