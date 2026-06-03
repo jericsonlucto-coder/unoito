@@ -711,13 +711,14 @@ export default function UnoGame() {
                 console.log(`👋 Player joined: ${event.playerName}`)
                 addMessage(`${event.playerName} joined the game`)
                 if (event.data?.players) {
-                    console.log('📋 Updated players list:', event.data.players.map(p => p.name))
-                    setPlayers(event.data.players)
+                    const playersList: Player[] = event.data.players
+                    console.log('📋 Updated players list:', playersList.map((p: Player) => p.name))
+                    setPlayers(playersList)
                     // Update room in localStorage
                     const rooms = loadRoomsFromLocalStorage()
                     const room = rooms.get(roomId)
                     if (room) {
-                        room.players = event.data.players
+                        room.players = playersList
                         rooms.set(roomId, room)
                         saveRoomsToLocalStorage(rooms)
                         console.log('💾 Updated room in localStorage')
