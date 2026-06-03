@@ -46,7 +46,7 @@ interface GameState {
 }
 
 interface GameEvent {
-    type: 'PLAY_CARD' | 'DRAW_CARD' | 'COLOR_CHOSEN' | 'UNO' | 'PLAYER_READY' | 'PLAYER_JOINED' | 'PLAYER_LEFT' | 'START_GAME' | 'SYNC_STATE'
+    type: 'PLAY_CARD' | 'DRAW_CARD' | 'COLOR_CHOSEN' | 'UNO' | 'PLAYER_READY' | 'PLAYER_JOINED' | 'PLAYER_LEFT' | 'START_GAME' | 'SYNC_STATE' | 'ROOM_CREATED' | 'REQUEST_ROOM'
     playerId: string
     playerName?: string
     data: any
@@ -174,38 +174,8 @@ class AudioManager {
 const audioManager = new AudioManager()
 // #endregion
 
-// Helper functions for room storage
-const saveRoomsToLocalStorage = (rooms: Map<string, RoomData>) => {
-    if (typeof window !== 'undefined') {
-        const roomsObj: Record<string, RoomData> = {}
-        rooms.forEach((value, key) => {
-            roomsObj[key] = value
-        })
-        localStorage.setItem('uno_rooms', JSON.stringify(roomsObj))
-        console.log('💾 Rooms saved to localStorage:', Array.from(rooms.keys()))
-    }
-}
-
-const loadRoomsFromLocalStorage = (): Map<string, RoomData> => {
-    const rooms = new Map<string, RoomData>()
-    if (typeof window !== 'undefined') {
-        const saved = localStorage.getItem('uno_rooms')
-        if (saved) {
-            try {
-                const roomsObj = JSON.parse(saved) as Record<string, RoomData>
-                Object.entries(roomsObj).forEach(([key, value]) => {
-                    rooms.set(key, value)
-                })
-                console.log('📂 Rooms loaded from localStorage:', Array.from(rooms.keys()))
-            } catch (e) {
-                console.error('Failed to load rooms from localStorage:', e)
-            }
-        } else {
-            console.log('📂 No rooms found in localStorage')
-        }
-    }
-    return rooms
-}
+// Global rooms storage (shared via Pusher events)
+let globalRooms: Map<string, RoomData> = new Map()
 
 export default function UnoGame() {
 
@@ -227,6 +197,7 @@ export default function UnoGame() {
     const [pusherChannel, setPusherChannel] = useState<any>(null)
     const [pusherConnection, setPusherConnection] = useState<any>(null)
     const [isHost, setIsHost] = useState(false)
+    const [globalPusher, setGlobalPusher] = useState<any>(null)
     // #endregion
 
     // #region REFS
@@ -506,6 +477,57 @@ export default function UnoGame() {
     // #endregion
 
     // #region MULTIPLAYER FUNCTIONS
+    const initGlobalPusher = () => {
+        if (globalPusher) return
+        
+        console.log('🌍 Initializing global Pusher for room discovery...')
+        const pusher = new Pusher(PUSHER_CONFIG.key, {
+            cluster: PUSHER_CONFIG.cluster,
+            enableStats: true
+        })
+        
+        setGlobalPusher(pusher)
+        
+        pusher.connection.bind('state_change', (states: any) => {
+            console.log('📡 Global Pusher connection state:', states.current)
+        })
+        
+        pusher.connection.bind('connected', () => {
+            console.log('✅ Global Pusher connected!')
+        })
+        
+        // Subscribe to global channel for room announcements
+        const globalChannel = pusher.subscribe('global-uno-rooms')
+        
+        globalChannel.bind('pusher:subscription_succeeded', () => {
+            console.log('✅ Subscribed to global channel for room discovery')
+        })
+        
+        globalChannel.bind('client-room-created', (data: { roomId: string, roomData: RoomData }) => {
+            console.log('📢 New room announced globally:', data.roomId)
+            globalRooms.set(data.roomId, data.roomData)
+        })
+        
+        globalChannel.bind('client-room-updated', (data: { roomId: string, roomData: RoomData }) => {
+            console.log('📢 Room updated:', data.roomId)
+            globalRooms.set(data.roomId, data.roomData)
+        })
+        
+        globalChannel.bind('client-request-room', (data: { roomId: string, requesterId: string }) => {
+            console.log('📢 Room request received for:', data.roomId)
+            const room = globalRooms.get(data.roomId)
+            if (room) {
+                globalChannel.trigger('client-room-response', {
+                    roomId: data.roomId,
+                    requesterId: data.requesterId,
+                    roomData: room
+                })
+            }
+        })
+        
+        return globalChannel
+    }
+
     const createMultiplayerRoom = () => {
         console.log('🏠 Creating multiplayer room...')
         const newRoomId = generateRoomId()
@@ -518,7 +540,7 @@ export default function UnoGame() {
         setRoomId(newRoomId)
         setIsHost(true)
         
-        // Store room in global map
+        // Store room in memory
         const newPlayer: Player = {
             id: newPlayerId,
             name: newPlayerName,
@@ -529,16 +551,29 @@ export default function UnoGame() {
             isOnline: true
         }
         
-        const rooms = loadRoomsFromLocalStorage()
-        rooms.set(newRoomId, {
+        const roomData: RoomData = {
             players: [newPlayer],
             gameState: null,
             createdAt: Date.now(),
             hostId: newPlayerId
-        })
-        saveRoomsToLocalStorage(rooms)
+        }
         
-        // Initialize Pusher for real-time updates
+        globalRooms.set(newRoomId, roomData)
+        
+        // Announce room globally via Pusher
+        initGlobalPusher()
+        const globalChannel = globalPusher?.subscribe('global-uno-rooms')
+        if (globalChannel) {
+            setTimeout(() => {
+                globalChannel.trigger('client-room-created', {
+                    roomId: newRoomId,
+                    roomData: roomData
+                })
+                console.log('📢 Announced room globally:', newRoomId)
+            }, 1000)
+        }
+        
+        // Initialize Pusher for this specific room
         console.log('🔌 Initializing Pusher connection for host...')
         const pusher = new Pusher(PUSHER_CONFIG.key, {
             cluster: PUSHER_CONFIG.cluster,
@@ -596,18 +631,47 @@ export default function UnoGame() {
             return
         }
         
-        const rooms = loadRoomsFromLocalStorage()
-        console.log('📂 Available rooms:', Array.from(rooms.keys()))
-        
-        const room = rooms.get(inputRoomId)
+        // First, try to get room from global announcements
+        const room = globalRooms.get(inputRoomId)
         
         if (!room) {
-            console.log(`❌ Room "${inputRoomId}" not found in localStorage`)
-            addMessage(`Room "${inputRoomId}" not found! Please check the room code.`)
+            // Request room info from global channel
+            initGlobalPusher()
+            const globalChannel = globalPusher?.subscribe('global-uno-rooms')
+            if (globalChannel) {
+                console.log('📤 Requesting room info from global channel...')
+                globalChannel.trigger('client-request-room', {
+                    roomId: inputRoomId,
+                    requesterId: 'joiner'
+                })
+                
+                // Listen for response
+                globalChannel.bind('client-room-response', (response: { roomId: string, requesterId: string, roomData: RoomData }) => {
+                    if (response.roomId === inputRoomId) {
+                        console.log('📥 Received room response:', response.roomData)
+                        globalRooms.set(inputRoomId, response.roomData)
+                        proceedToJoin(response.roomData)
+                    }
+                })
+                
+                addMessage('Looking for room... Please wait.')
+                setTimeout(() => {
+                    const foundRoom = globalRooms.get(inputRoomId)
+                    if (!foundRoom) {
+                        addMessage(`Room "${inputRoomId}" not found! Please check the room code.`)
+                    }
+                }, 3000)
+            } else {
+                addMessage(`Room "${inputRoomId}" not found! Please check the room code.`)
+            }
             return
         }
         
-        console.log('✅ Room found:', { roomId: inputRoomId, players: room.players.length, hostId: room.hostId })
+        proceedToJoin(room)
+    }
+    
+    const proceedToJoin = (room: RoomData) => {
+        const inputRoomId = roomId.trim().toUpperCase()
         
         if (room.players.length >= 4) {
             console.log('❌ Room is full')
@@ -638,10 +702,16 @@ export default function UnoGame() {
         }
         
         room.players.push(newPlayer)
-        rooms.set(inputRoomId, room)
-        saveRoomsToLocalStorage(rooms)
+        globalRooms.set(inputRoomId, room)
         
-        console.log('✅ Player added to room. Total players:', room.players.length)
+        // Announce room update globally
+        const globalChannel = globalPusher?.subscribe('global-uno-rooms')
+        if (globalChannel) {
+            globalChannel.trigger('client-room-updated', {
+                roomId: inputRoomId,
+                roomData: room
+            })
+        }
         
         // Initialize Pusher
         console.log('🔌 Initializing Pusher connection for joiner...')
@@ -714,14 +784,11 @@ export default function UnoGame() {
                     const playersList: Player[] = event.data.players
                     console.log('📋 Updated players list:', playersList.map((p: Player) => p.name))
                     setPlayers(playersList)
-                    // Update room in localStorage
-                    const rooms = loadRoomsFromLocalStorage()
-                    const room = rooms.get(roomId)
+                    // Update global room
+                    const room = globalRooms.get(roomId)
                     if (room) {
                         room.players = playersList
-                        rooms.set(roomId, room)
-                        saveRoomsToLocalStorage(rooms)
-                        console.log('💾 Updated room in localStorage')
+                        globalRooms.set(roomId, room)
                     }
                 }
                 break
@@ -758,8 +825,7 @@ export default function UnoGame() {
     const startMultiplayerGame = () => {
         console.log('🚀 Host attempting to start game...')
         
-        const rooms = loadRoomsFromLocalStorage()
-        const room = rooms.get(roomId)
+        const room = globalRooms.get(roomId)
         
         if (!room) {
             console.log('❌ Room not found!')
@@ -822,8 +888,7 @@ export default function UnoGame() {
         })
         
         room.gameState = newGameState
-        rooms.set(roomId, room)
-        saveRoomsToLocalStorage(rooms)
+        globalRooms.set(roomId, room)
         
         // Notify all players
         if (pusherChannel) {
@@ -863,18 +928,16 @@ export default function UnoGame() {
             }
             
             // Remove player from room
-            const rooms = loadRoomsFromLocalStorage()
-            const room = rooms.get(roomId)
+            const room = globalRooms.get(roomId)
             if (room) {
                 room.players = room.players.filter(p => p.id !== playerId)
                 if (room.players.length === 0) {
-                    rooms.delete(roomId)
+                    globalRooms.delete(roomId)
                     console.log('🗑️ Room deleted (empty)')
                 } else {
-                    rooms.set(roomId, room)
+                    globalRooms.set(roomId, room)
                     console.log('👥 Player removed from room. Remaining players:', room.players.length)
                 }
-                saveRoomsToLocalStorage(rooms)
             }
         }
         setGameMode('menu')
@@ -1071,6 +1134,11 @@ export default function UnoGame() {
         }
     }, [])
     // #endregion
+
+    // Initialize global Pusher on mount
+    useEffect(() => {
+        initGlobalPusher()
+    }, [])
 
     // #region RENDER COMPONENTS
     const renderMenu = () => (
