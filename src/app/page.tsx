@@ -202,23 +202,28 @@ export default function UnoGame() {
         deck: CardType[],
         pile: CardType[]
     ): { newHand: CardType[], newDeck: CardType[], newPlayPile: CardType[], drawnCard: CardType | null } => {
+        // Create DEEP copies of all arrays
         let newDeck = [...deck]
         let newPlayPile = [...pile]
         let drawnCard: CardType | null = null
         
-        // IMPORTANT: Create a copy of the hand array
-        let newHand = [...hand]
+        // Create a NEW array for the hand (not a reference)
+        let newHand = hand.map(card => ({ ...card }))
 
         if (newDeck.length > 0) {
-            drawnCard = newDeck.shift()!
+            drawnCard = { ...newDeck.shift()! }
+            newHand.push(drawnCard)
+        } else if (newPlayPile.length > 1) {
+            // Reshuffle the play pile (excluding the top card)
+            const cardsToShuffle = newPlayPile.slice(0, -1).map(card => ({ ...card }))
+            newDeck = shuffleDeck(cardsToShuffle)
+            newPlayPile = [{ ...newPlayPile[newPlayPile.length - 1] }]
+            drawnCard = { ...newDeck.shift()! }
             newHand.push(drawnCard)
         } else {
-            // Reshuffle the play pile (excluding the top card)
-            const cardsToShuffle = newPlayPile.slice(0, -1)
-            newDeck = shuffleDeck(cardsToShuffle)
-            newPlayPile = [newPlayPile[newPlayPile.length - 1]]
-            drawnCard = newDeck.shift()!
-            newHand.push(drawnCard)
+            // Should not happen, but handle gracefully
+            console.error("Cannot draw card: no cards available")
+            return { newHand, newDeck, newPlayPile, drawnCard: null }
         }
 
         audioManager.play('drawCard')
@@ -264,7 +269,7 @@ export default function UnoGame() {
         // Deal 7 cards to each player
         for (let i = 0; i < 7; i++) {
             for (let j = 0; j < newPlayers.length; j++) {
-                newPlayers[j].hand.push(newDeck.shift()!)
+                newPlayers[j].hand.push({ ...newDeck.shift()! })
             }
         }
 
@@ -272,7 +277,7 @@ export default function UnoGame() {
         let startCard: CardType | null = null
         for (let i = 0; i < newDeck.length; i++) {
             if (newDeck[i].color !== 'any' && newDeck[i].value <= 9) {
-                startCard = newDeck.splice(i, 1)[0]
+                startCard = { ...newDeck.splice(i, 1)[0] }
                 break
             }
         }
@@ -593,41 +598,46 @@ export default function UnoGame() {
     const handleDrawPileClick = useCallback(() => {
         if (currentTurnRef.current !== 'player' || colorPickerRef.current || !gameOnRef.current) return
 
+        console.log("Before draw - player hand length:", getPlayerById('player').hand.length)
+        
         const player = getPlayerById('player')
-        const { newHand, newDeck, newPlayPile, drawnCard } = drawCardLogic(
+        const result = drawCardLogic(
             player.hand,
             deckRef.current,
             playPileRef.current
         )
+        
+        console.log("After draw logic - new hand length:", result.newHand.length)
 
         const updatedPlayers = playersRef.current.map(p =>
-            p.id === 'player' ? { ...p, hand: newHand } : p
+            p.id === 'player' ? { ...p, hand: result.newHand } : p
         )
 
         setPlayers(updatedPlayers)
         playersRef.current = updatedPlayers
-        setDeckState(newDeck)
-        deckRef.current = newDeck
-        setPlayPile(newPlayPile)
-        playPileRef.current = newPlayPile
+        setDeckState(result.newDeck)
+        deckRef.current = result.newDeck
+        setPlayPile(result.newPlayPile)
+        playPileRef.current = result.newPlayPile
 
         // Check if drawn card can be played immediately
-        if (drawnCard) {
-            const topCard = newPlayPile[newPlayPile.length - 1]
+        if (result.drawnCard) {
+            const topCard = result.newPlayPile[result.newPlayPile.length - 1]
             const canPlayDrawnCard = 
-                drawnCard.color === topCard.color ||
-                drawnCard.value === topCard.value ||
-                drawnCard.color === 'any' ||
+                result.drawnCard.color === topCard.color ||
+                result.drawnCard.value === topCard.value ||
+                result.drawnCard.color === 'any' ||
                 topCard.color === 'any'
 
             if (canPlayDrawnCard) {
                 // Player can play the drawn card - turn stays with player
-                // Don't change turn, player can now click the card
+                console.log("Drawn card can be played - turn stays")
                 return
             }
         }
         
         // Cannot play drawn card, move to next player
+        console.log("Cannot play drawn card - moving to next player")
         const nextTurn = getNextTurn('player')
         setCurrentTurn(nextTurn)
         currentTurnRef.current = nextTurn
