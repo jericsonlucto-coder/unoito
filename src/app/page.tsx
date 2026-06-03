@@ -848,23 +848,51 @@ export default function UnoGame() {
                 </div>
 
                 {/* PLAY PILE */}
-                <div className='play-pile'>
-                    {topCard && (
-                        <div className={`${topCard.color === 'any' && topCard.drawValue === 0 && selectedWildColor ? 'wild-card-glow' : ''}`}>
-                            <Image
-                                src={topCard.src}
-                                alt='play pile'
-                                width={100}
-                                height={150}
-                                className={getWildCardClass(topCard)}
-                                style={{
-                                    transition: 'all 0.3s ease',
-                                    borderRadius: '10px'
-                                }}
-                            />
-                        </div>
-                    )}
-                </div>
+               {/* PLAY PILE */}
+<div className='play-pile'>
+    {topCard && (
+        <div style={{ position: 'relative', display: 'inline-block' }}>
+            <Image
+                src={topCard.src}
+                alt='play pile'
+                width={100}
+                height={150}
+                style={{
+                    transition: 'all 0.3s ease',
+                    borderRadius: '10px',
+                    boxShadow: selectedWildColor && topCard.color === 'any' && topCard.drawValue === 0 ? 
+                        (selectedWildColor === 'rgb(255, 6, 0)' ? '0 0 0 4px rgba(255, 6, 0, 0.8), 0 0 0 8px rgba(255, 6, 0, 0.4), 0 0 20px 5px rgba(255, 6, 0, 0.6)' :
+                        selectedWildColor === 'rgb(0, 170, 69)' ? '0 0 0 4px rgba(0, 170, 69, 0.8), 0 0 0 8px rgba(0, 170, 69, 0.4), 0 0 20px 5px rgba(0, 170, 69, 0.6)' :
+                        selectedWildColor === 'rgb(0, 150, 224)' ? '0 0 0 4px rgba(0, 150, 224, 0.8), 0 0 0 8px rgba(0, 150, 224, 0.4), 0 0 20px 5px rgba(0, 150, 224, 0.6)' :
+                        '0 0 0 4px rgba(255, 222, 0, 0.8), 0 0 0 8px rgba(255, 222, 0, 0.4), 0 0 20px 5px rgba(255, 222, 0, 0.6)') :
+                        '0 0.8rem 1.6rem rgba(0, 0, 0, 0.3)',
+                    transform: selectedWildColor && topCard.color === 'any' && topCard.drawValue === 0 ? 'scale(1.02)' : 'scale(1)',
+                    border: selectedWildColor && topCard.color === 'any' && topCard.drawValue === 0 ? '2px solid' : 'none',
+                    borderColor: selectedWildColor === 'rgb(255, 6, 0)' ? '#ff4444' :
+                               selectedWildColor === 'rgb(0, 170, 69)' ? '#4caf50' :
+                               selectedWildColor === 'rgb(0, 150, 224)' ? '#2196f3' :
+                               selectedWildColor === 'rgb(255, 222, 0)' ? '#ffeb3b' : 'transparent'
+                }}
+            />
+            {selectedWildColor && topCard.color === 'any' && topCard.drawValue === 0 && (
+                <div style={{
+                    position: 'absolute',
+                    top: '-5px',
+                    left: '-5px',
+                    right: '-5px',
+                    bottom: '-5px',
+                    borderRadius: '12px',
+                    background: `radial-gradient(circle, ${selectedWildColor === 'rgb(255, 6, 0)' ? 'rgba(255, 6, 0, 0.3)' :
+                                 selectedWildColor === 'rgb(0, 170, 69)' ? 'rgba(0, 170, 69, 0.3)' :
+                                 selectedWildColor === 'rgb(0, 150, 224)' ? 'rgba(0, 150, 224, 0.3)' :
+                                 'rgba(255, 222, 0, 0.3)'}, transparent)`,
+                    pointerEvents: 'none',
+                    animation: 'glowPulse 1.5s ease-in-out infinite'
+                }} />
+            )}
+        </div>
+    )}
+</div>
 
                 {/* DRAW PILE */}
                 <div className='draw-pile' onClick={handleDrawPileClick} style={{ cursor: 'pointer' }}>
