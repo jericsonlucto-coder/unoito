@@ -824,19 +824,14 @@ export default function UnoGame() {
         
         console.log('Starting game with player order:', playerOrder)
         
-        const positions: Player['position'][] = ['bottom', 'top', 'left', 'right']
-        
+        // Create player positions - always put current player at bottom, others at top
         const playerPositions: { [key: string]: Player['position'] } = {}
         
-        playerOrder.forEach((playerId, index) => {
+        playerOrder.forEach((playerId) => {
             if (playerId === myPlayerIdRef.current) {
                 playerPositions[playerId] = 'bottom'
-            } else if (index === 0 || (playerOrder[0] === myPlayerIdRef.current && index === 1)) {
-                playerPositions[playerId] = 'top'
-            } else if (index === 1 || (playerOrder[0] === myPlayerIdRef.current && index === 2)) {
-                playerPositions[playerId] = 'left'
             } else {
-                playerPositions[playerId] = 'right'
+                playerPositions[playerId] = 'top'
             }
         })
 
@@ -880,7 +875,8 @@ export default function UnoGame() {
                     }
                 }
             }
-            firstPlayer = playerOrder[(firstPlayerIndex + 2) % playerOrder.length]
+            // Don't skip the player who drew - they still get their turn
+            firstPlayer = drawPlayerId
         } else if (startCard.value === 14) {
             drawAmount = 4
             audioManager.play('plusCard')
@@ -894,10 +890,11 @@ export default function UnoGame() {
                     }
                 }
             }
-            firstPlayer = playerOrder[(firstPlayerIndex + 2) % playerOrder.length]
             const colors = ['rgb(255, 6, 0)', 'rgb(0, 170, 69)', 'rgb(0, 150, 224)', 'rgb(255, 222, 0)']
             const randomColor = colors[Math.floor(Math.random() * colors.length)]
             startCard.color = randomColor
+            // Don't skip the player who drew - they still get their turn
+            firstPlayer = drawPlayerId
         } else if (startCard.value === 10) {
             firstPlayer = playerOrder[firstPlayerIndex]
         } else if (startCard.value === 11) {
@@ -1128,6 +1125,12 @@ export default function UnoGame() {
             setPlayers(updated);            playersRef.current  = updated
             setDeckState(updDeck);          deckRef.current     = updDeck
             setPlayPile(updPile);           playPileRef.current = updPile
+            
+            // The player who drew cards still gets their turn
+            const nextTurn = nextId
+            setCurrentTurn(nextTurn)
+            currentTurnRef.current = nextTurn
+            return
         } else {
             const updated = playersRef.current.map(p =>
                 p.id === cpuId ? { ...p, hand: newCpuHand } : p)
@@ -1228,11 +1231,10 @@ export default function UnoGame() {
                 deckRef.current = updDeck
                 setPlayPile(updPile)
                 playPileRef.current = updPile
-                
-                // The player who drew cards gets skipped, so next turn is the player after them
-                const drawPlayerIndex = order.indexOf(drawTargetPlayer)
-                nextTurn = order[(drawPlayerIndex + 1) % order.length]
             }
+            
+            // The player who drew cards still gets their turn (not skipped)
+            nextTurn = drawTargetPlayer
         }
         
         setPlayers(updatedPlayers)
@@ -1263,7 +1265,6 @@ export default function UnoGame() {
             setColorPickerOpen(true)
             colorPickerRef.current = true
             
-            // Broadcast that we're waiting for color choice
             if (gameModeRef.current === 'multiplayer') {
                 await broadcastAction('PLAY_CARD', {
                     card: playedCard,
@@ -1455,10 +1456,7 @@ export default function UnoGame() {
     // #region DERIVED
     const topCard      = playPile[playPile.length - 1]
     const myPlayer     = players.find(p => p.id === myPlayerId)
-    const otherPlayers = players.filter(p => p.id !== myPlayerId).sort((a, b) => {
-        const order = { top: 0, left: 1, right: 2 }
-        return (order[a.position as keyof typeof order] || 0) - (order[b.position as keyof typeof order] || 0)
-    })
+    const otherPlayers = players.filter(p => p.id !== myPlayerId)
 
     const getCardName = (card: CardType) => {
         if (card.color === 'any') return card.drawValue === 4 ? 'Wild Draw 4' : 'Wild Card'
@@ -1831,9 +1829,9 @@ export default function UnoGame() {
                 {gameMode === 'ai' ? '🤖 vs AI' : `🌐 ${roomCode}`}
             </div>
 
+            {/* Other Players - positioned at top */}
             {otherPlayers.map(op => {
-                const isVertical = op.position === 'left' || op.position === 'right'
-                const isMyTurn   = currentTurn === op.id
+                const isMyTurn = currentTurn === op.id
 
                 return (
                     <div key={op.id} className={`cpu-player ${getPositionClass(op.position)}`}>
@@ -1855,25 +1853,21 @@ export default function UnoGame() {
                             </div>
                         </div>
 
-                        <div className={isVertical ? 'cpu-hand-vertical' : 'cpu-hand'}>
+                        <div className="cpu-hand">
                             {op.hand.map((_, i) => (
                                 <Image
                                     key={i}
                                     src={'/images/back.png'}
                                     alt="card back"
-                                    width={isVertical ? 90 : 60}
-                                    height={isVertical ? 60 : 90}
-                                    className={isVertical ? 'cpu-card-vertical' : 'cpu-card'}
+                                    width={60}
+                                    height={90}
+                                    className="cpu-card"
                                 />
                             ))}
                         </div>
 
                         {showUno[op.id] && (
-                            <div className={
-                                op.position === 'top'   ? 'cpu-animation-top'   :
-                                op.position === 'left'  ? 'cpu-animation-left'  :
-                                                          'cpu-animation-right'
-                            }>
+                            <div className="cpu-animation-top">
                                 <Image src="/images/uno!.png" alt="UNO!" width={80} height={40} />
                             </div>
                         )}
