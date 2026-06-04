@@ -310,7 +310,7 @@ export default function UnoGame() {
         Math.floor(Math.random() * 500 + 1000), [])
     // #endregion
 
-    // #region BROADCAST ACTION - WITH ERROR HANDLING
+    // #region BROADCAST ACTION
     const broadcastAction = useCallback(async (action: string, payload: any) => {
         if (gameModeRef.current !== 'multiplayer') return
         if (!gameOnRef.current && action !== 'ROUND_WINNER' && action !== 'GAME_WINNER') return
@@ -554,6 +554,9 @@ export default function UnoGame() {
         
         console.log('Player positions calculated:', playerPositions)
         
+        // Check if we received full hand data
+        const hasFullHandData = playerInfo[0] && playerInfo[0].hand && Array.isArray(playerInfo[0].hand)
+        
         let newDeck = createDeck()
         newDeck = shuffleDeck(newDeck)
         
@@ -561,24 +564,39 @@ export default function UnoGame() {
             const isMe = info.id === myPlayerIdRef.current
             const position = playerPositions[info.id] || (isMe ? 'bottom' : 'top')
             const displayName = isMe ? `${info.name} (You)` : info.name
-            console.log(`Creating player: ID=${info.id}, Name=${displayName}, Position=${position}, IsMe=${isMe}`)
+            
+            let hand: CardType[] = []
+            
+            if (hasFullHandData && info.hand) {
+                hand = info.hand.map((cardData: any) => 
+                    new Card(
+                        cardData.color,
+                        cardData.value,
+                        cardData.points,
+                        cardData.changeTurn,
+                        cardData.drawValue,
+                        cardData.src
+                    )
+                )
+                console.log(`Player ${info.id} has ${hand.length} cards from received data`)
+            } else {
+                for (let i = 0; i < 7; i++) {
+                    if (newDeck.length > 0) {
+                        hand.push(newDeck.shift()!)
+                    }
+                }
+                console.log(`Player ${info.id} dealt ${hand.length} new cards (fallback)`)
+            }
+            
             return {
                 id: info.id as Player['id'],
-                hand: [],
+                hand: hand,
                 score: info.score || 0,
                 position: position,
                 name: displayName,
                 isHuman: true,
             }
         })
-        
-        for (let i = 0; i < 7; i++) {
-            for (let j = 0; j < initializedPlayers.length; j++) {
-                if (newDeck.length > 0) {
-                    initializedPlayers[j].hand.push(newDeck.shift()!)
-                }
-            }
-        }
         
         let startCardObj: CardType | null = null
         if (startCard) {
@@ -621,7 +639,7 @@ export default function UnoGame() {
         const isMyTurn = nextTurn === myPlayerIdRef.current
         const didIDraw = drawAmount && drawAmount > 0 && drawPlayerId === myPlayerIdRef.current
         
-        console.log('Final players with positions:', currentPlayers.map(p => ({ id: p.id, name: p.name, position: p.position, handSize: p.hand.length })))
+        console.log('Final players with positions:', currentPlayers.map(p => ({ id: p.id, name: p.name, position: p.position, handSize: p.hand?.length || 0 })))
         
         setPlayers(currentPlayers)
         playersRef.current = currentPlayers
@@ -658,7 +676,7 @@ export default function UnoGame() {
     }, [])
     // #endregion
 
-    // #region CHECK WINNER - FIXED FOR MULTIPLAYER
+    // #region CHECK WINNER
     const checkForWinner = useCallback(async (currentPlayers?: Player[]) => {
         const cp = currentPlayers ?? playersRef.current
         const winner = cp.find(p => p.hand.length === 0)
@@ -904,7 +922,9 @@ export default function UnoGame() {
 
         for (let i = 0; i < 7; i++) {
             for (let j = 0; j < newPlayers.length; j++) {
-                newPlayers[j].hand.push(newDeck.shift()!)
+                if (newDeck.length > 0) {
+                    newPlayers[j].hand.push(newDeck.shift()!)
+                }
             }
         }
 
@@ -994,7 +1014,15 @@ export default function UnoGame() {
                 id: p.id,
                 name: p.name,
                 score: p.score,
-                handSize: p.hand.length,
+                hand: p.hand.map(card => ({
+                    color: card.color,
+                    value: card.value,
+                    points: card.points,
+                    changeTurn: card.changeTurn,
+                    drawValue: card.drawValue,
+                    src: card.src,
+                    playedByPlayer: card.playedByPlayer,
+                })),
             })),
             firstTurn: firstPlayer,
             direction: 'clockwise',
@@ -1002,7 +1030,7 @@ export default function UnoGame() {
             drawPlayerId: drawPlayerId,
         }
         
-        console.log('Broadcasting game-started payload:', gameStartPayload)
+        console.log('Broadcasting game-started payload with full hand data')
         await pusherTrigger(`uno-room-${roomCode}`, 'game-started', gameStartPayload)
     }, [isHost, mpConnectedPlayers, roomCode])
     // #endregion
@@ -1483,7 +1511,7 @@ export default function UnoGame() {
             console.log('Current turn:', currentTurn)
             console.log('My player ID:', myPlayerIdRef.current)
             console.log('Is my turn:', currentTurn === myPlayerIdRef.current)
-            console.log('Players:', players.map(p => ({ id: p.id, name: p.name, position: p.position, handSize: p.hand.length })))
+            console.log('Players:', players.map(p => ({ id: p.id, name: p.name, position: p.position, handSize: p.hand?.length || 0 })))
             console.log('Top card:', playPile[playPile.length - 1]?.value)
             console.log('========================')
         }
@@ -1884,6 +1912,12 @@ export default function UnoGame() {
             {otherPlayers.map(op => {
                 const isMyTurn = currentTurn === op.id
                 const isVertical = op.position === 'left' || op.position === 'right'
+                
+                // Safety check for undefined hand
+                if (!op.hand || !Array.isArray(op.hand)) {
+                    console.warn(`Player ${op.id} has undefined hand`, op)
+                    return null
+                }
                 
                 return (
                     <div key={op.id} className={`cpu-player ${getPositionClass(op.position)}`}>
