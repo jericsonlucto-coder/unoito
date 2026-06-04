@@ -487,9 +487,11 @@ export default function UnoGame() {
     }, [triggerUno])
     // #endregion
 
-    // #region INITIALIZE GAME FROM START - WITH FIXED 3-PLAYER POSITIONING
+    // #region INITIALIZE GAME FROM START - WITH DEBUG LOGS
     const initializeGameFromStart = useCallback(async (payload: any) => {
-        console.log('Initializing game from start:', payload)
+        console.log('=== INITIALIZE GAME FROM START ===')
+        console.log('Received payload:', payload)
+        
         const { playerOrder, startCard, players: playerInfo, firstTurn, direction: startDirection, drawAmount, drawPlayerId } = payload
         
         setPlayerOrderState(playerOrder)
@@ -499,7 +501,8 @@ export default function UnoGame() {
         const myIndex = playerOrder.findIndex((id: Player['id']) => id === myPlayerIdRef.current)
         const playerCount = playerOrder.length
         
-        console.log('Player count:', playerCount, 'My index:', myIndex, 'Player order:', playerOrder)
+        console.log(`Player count: ${playerCount}, My index: ${myIndex}, My ID: ${myPlayerIdRef.current}`)
+        console.log('Player order:', playerOrder)
         
         // Create position mapping for all players based on current client's perspective
         const playerPositions: { [key: string]: Player['position'] } = {}
@@ -508,21 +511,28 @@ export default function UnoGame() {
             // 2 players: bottom (me) and top (opponent)
             playerPositions[playerOrder[myIndex]] = 'bottom'
             playerPositions[playerOrder[(myIndex + 1) % playerCount]] = 'top'
+            console.log('2-player mode: Bottom and Top positions')
         } else if (playerCount === 3) {
             // 3 players: bottom (me), left, right (no top position)
             playerPositions[playerOrder[myIndex]] = 'bottom'
             playerPositions[playerOrder[(myIndex + 1) % playerCount]] = 'left'
             playerPositions[playerOrder[(myIndex + 2) % playerCount]] = 'right'
+            console.log('3-player mode: Bottom, Left, and Right positions')
         } else if (playerCount === 4) {
             // 4 players: bottom (me), left, top, right (clockwise)
             playerPositions[playerOrder[myIndex]] = 'bottom'
             playerPositions[playerOrder[(myIndex + 1) % playerCount]] = 'left'
             playerPositions[playerOrder[(myIndex + 2) % playerCount]] = 'top'
             playerPositions[playerOrder[(myIndex + 3) % playerCount]] = 'right'
+            console.log('4-player mode: Bottom, Left, Top, Right positions')
         }
         
-        console.log('Player positions calculated locally:', playerPositions)
-        console.log('My player ID:', myPlayerIdRef.current, 'My index:', myIndex)
+        console.log('Player positions calculated:', playerPositions)
+        
+        // Log each player's assigned position
+        Object.entries(playerPositions).forEach(([playerId, position]) => {
+            console.log(`Player ${playerId} assigned to position: ${position}`)
+        })
         
         let newDeck = createDeck()
         newDeck = shuffleDeck(newDeck)
@@ -530,12 +540,14 @@ export default function UnoGame() {
         const initializedPlayers: Player[] = playerInfo.map((info: any) => {
             const isMe = info.id === myPlayerIdRef.current
             const position = playerPositions[info.id] || (isMe ? 'bottom' : 'top')
+            const displayName = isMe ? `${info.name} (You)` : info.name
+            console.log(`Creating player: ID=${info.id}, Name=${displayName}, Position=${position}, IsMe=${isMe}`)
             return {
                 id: info.id as Player['id'],
                 hand: [],
                 score: info.score || 0,
                 position: position,
-                name: isMe ? `${info.name} (You)` : info.name,
+                name: displayName,
                 isHuman: true,
             }
         })
@@ -589,10 +601,7 @@ export default function UnoGame() {
         const isMyTurn = nextTurn === myPlayerIdRef.current
         const didIDraw = drawAmount && drawAmount > 0 && drawPlayerId === myPlayerIdRef.current
         
-        console.log('My player ID:', myPlayerIdRef.current)
-        console.log('First turn:', nextTurn, 'Is my turn:', isMyTurn)
-        console.log('Did I draw:', didIDraw)
-        console.log('Final players with positions:', currentPlayers.map(p => ({ id: p.id, name: p.name, position: p.position })))
+        console.log('Final players with positions:', currentPlayers.map(p => ({ id: p.id, name: p.name, position: p.position, handSize: p.hand.length })))
         
         setPlayers(currentPlayers)
         playersRef.current = currentPlayers
@@ -613,6 +622,7 @@ export default function UnoGame() {
         // Set data attribute for CSS
         if (typeof document !== 'undefined') {
             document.body.setAttribute('data-player-count', playerCount.toString())
+            console.log(`Set body data-player-count to: ${playerCount}`)
         }
         
         audioManager.play('shuffle')
@@ -851,7 +861,10 @@ export default function UnoGame() {
         const playerOrder: Player['id'][] = mpConnectedPlayers.map(p => p.id as Player['id'])
         const playerCount = playerOrder.length
         
-        console.log('Starting game with player order:', playerOrder, 'Count:', playerCount)
+        console.log('=== STARTING MULTIPLAYER GAME ===')
+        console.log('Player order:', playerOrder)
+        console.log('Player count:', playerCount)
+        console.log('My ID (host):', myPlayerIdRef.current)
 
         const newPlayers: Player[] = mpConnectedPlayers.map((cp) => ({
             id: cp.id as Player['id'],
@@ -880,6 +893,9 @@ export default function UnoGame() {
         let drawAmount = 0
         let drawPlayerId: Player['id'] | null = null
         
+        console.log('Start card:', startCard.value, startCard.color)
+        console.log('First player index:', firstPlayerIndex, 'First player:', firstPlayer)
+        
         if (startCard.value === 12) {
             drawAmount = 2
             audioManager.play('plusCard')
@@ -894,6 +910,7 @@ export default function UnoGame() {
                 }
             }
             firstPlayer = drawPlayerId
+            console.log(`Draw 2 card! ${drawPlayerId} draws 2 cards, turn passes to ${firstPlayer}`)
         } else if (startCard.value === 14) {
             drawAmount = 4
             audioManager.play('plusCard')
@@ -911,18 +928,22 @@ export default function UnoGame() {
             const randomColor = colors[Math.floor(Math.random() * colors.length)]
             startCard.color = randomColor
             firstPlayer = drawPlayerId
+            console.log(`Wild Draw 4 card! ${drawPlayerId} draws 4 cards, turn passes to ${firstPlayer}, color set to ${randomColor}`)
         } else if (startCard.value === 10) {
             firstPlayer = playerOrder[firstPlayerIndex]
+            console.log('Reverse card!')
         } else if (startCard.value === 11) {
             firstPlayer = playerOrder[(firstPlayerIndex + 1) % playerOrder.length]
+            console.log(`Skip card! First player skipped, now ${firstPlayer}'s turn`)
         } else if (startCard.color === 'any' && startCard.value === 13) {
             const colors = ['rgb(255, 6, 0)', 'rgb(0, 170, 69)', 'rgb(0, 150, 224)', 'rgb(255, 222, 0)']
             const randomColor = colors[Math.floor(Math.random() * colors.length)]
             startCard.color = randomColor
+            console.log(`Wild card! Color set to ${randomColor}`)
         }
         
-        console.log('Game starting - First player:', firstPlayer)
-        console.log('Player order:', playerOrder)
+        console.log('Final first player:', firstPlayer)
+        console.log('Draw amount:', drawAmount, 'Draw player ID:', drawPlayerId)
 
         setPlayers(newPlayers);             playersRef.current     = newPlayers
         setDeckState(newDeck);              deckRef.current        = newDeck
@@ -957,7 +978,7 @@ export default function UnoGame() {
             drawPlayerId: drawPlayerId,
         }
         
-        console.log('Broadcasting game-started:', gameStartPayload)
+        console.log('Broadcasting game-started payload:', gameStartPayload)
         await pusherTrigger(`uno-room-${roomCode}`, 'game-started', gameStartPayload)
     }, [isHost, mpConnectedPlayers, roomCode])
     // #endregion
@@ -1433,14 +1454,14 @@ export default function UnoGame() {
     // #region DEBUG LOGGING
     useEffect(() => {
         if (gameMode === 'multiplayer' && mpState === 'playing') {
-            console.log('Game state:', {
-                gameOn,
-                currentTurn,
-                myPlayerId: myPlayerIdRef.current,
-                isMyTurn: currentTurn === myPlayerIdRef.current,
-                players: players.map(p => ({ id: p.id, name: p.name, position: p.position, handSize: p.hand.length })),
-                topCard: playPile[playPile.length - 1]?.value
-            })
+            console.log('=== CURRENT GAME STATE ===')
+            console.log('Game on:', gameOn)
+            console.log('Current turn:', currentTurn)
+            console.log('My player ID:', myPlayerIdRef.current)
+            console.log('Is my turn:', currentTurn === myPlayerIdRef.current)
+            console.log('Players:', players.map(p => ({ id: p.id, name: p.name, position: p.position, handSize: p.hand.length })))
+            console.log('Top card:', playPile[playPile.length - 1]?.value)
+            console.log('========================')
         }
     }, [currentTurn, gameOn, players, mpState, gameMode])
     // #endregion
@@ -1840,6 +1861,8 @@ export default function UnoGame() {
             {otherPlayers.map(op => {
                 const isMyTurn = currentTurn === op.id
                 const isVertical = op.position === 'left' || op.position === 'right'
+                
+                console.log(`Rendering player: ${op.name}, Position: ${op.position}, Class: ${getPositionClass(op.position)}`)
 
                 return (
                     <div key={op.id} className={`cpu-player ${getPositionClass(op.position)}`}>
