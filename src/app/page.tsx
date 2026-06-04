@@ -487,24 +487,52 @@ export default function UnoGame() {
     }, [triggerUno])
     // #endregion
 
-    // #region INITIALIZE GAME FROM START
+    // #region INITIALIZE GAME FROM START - WITH LOCAL POSITION CALCULATION
     const initializeGameFromStart = useCallback(async (payload: any) => {
         console.log('Initializing game from start:', payload)
-        const { playerOrder, startCard, players: playerInfo, firstTurn, direction: startDirection, drawAmount, drawPlayerId, playerPositions } = payload
+        const { playerOrder, startCard, players: playerInfo, firstTurn, direction: startDirection, drawAmount, drawPlayerId } = payload
         
         setPlayerOrderState(playerOrder)
         playerOrderRef.current = playerOrder
+        
+        // Calculate positions based on where THIS client is in the player order
+        const myIndex = playerOrder.findIndex(id => id === myPlayerIdRef.current)
+        const playerCount = playerOrder.length
+        
+        // Create position mapping for all players based on current client's perspective
+        const playerPositions: { [key: string]: Player['position'] } = {}
+        
+        if (playerCount === 2) {
+            // 2 players: bottom (me) and top (opponent)
+            playerPositions[playerOrder[myIndex]] = 'bottom'
+            playerPositions[playerOrder[(myIndex + 1) % playerCount]] = 'top'
+        } else if (playerCount === 3) {
+            // 3 players: bottom (me), left, right
+            playerPositions[playerOrder[myIndex]] = 'bottom'
+            playerPositions[playerOrder[(myIndex + 1) % playerCount]] = 'left'
+            playerPositions[playerOrder[(myIndex + 2) % playerCount]] = 'right'
+        } else if (playerCount === 4) {
+            // 4 players: bottom (me), left, top, right (clockwise)
+            playerPositions[playerOrder[myIndex]] = 'bottom'
+            playerPositions[playerOrder[(myIndex + 1) % playerCount]] = 'left'
+            playerPositions[playerOrder[(myIndex + 2) % playerCount]] = 'top'
+            playerPositions[playerOrder[(myIndex + 3) % playerCount]] = 'right'
+        }
+        
+        console.log('Player positions calculated locally:', playerPositions)
+        console.log('My player ID:', myPlayerIdRef.current, 'My index:', myIndex)
         
         let newDeck = createDeck()
         newDeck = shuffleDeck(newDeck)
         
         const initializedPlayers: Player[] = playerInfo.map((info: any) => {
             const isMe = info.id === myPlayerIdRef.current
+            const position = playerPositions[info.id] || (isMe ? 'bottom' : 'top')
             return {
                 id: info.id as Player['id'],
                 hand: [],
                 score: info.score || 0,
-                position: playerPositions?.[info.id] || (isMe ? 'bottom' : 'top'),
+                position: position,
                 name: isMe ? `${info.name} (You)` : info.name,
                 isHuman: true,
             }
@@ -578,6 +606,11 @@ export default function UnoGame() {
         setColorPickerOpen(false)
         colorPickerRef.current = false
         setMpState('playing')
+        
+        // Set data attribute for CSS
+        if (typeof document !== 'undefined') {
+            document.body.setAttribute('data-player-count', playerCount.toString())
+        }
         
         audioManager.play('shuffle')
         
@@ -816,45 +849,12 @@ export default function UnoGame() {
         const playerCount = playerOrder.length
         
         console.log('Starting game with player order:', playerOrder, 'Count:', playerCount)
-        
-        // Assign positions based on number of players
-        const playerPositions: { [key: string]: Player['position'] } = {}
-        
-        // Find the index of the current player
-        const myIndex = playerOrder.findIndex(id => id === myPlayerIdRef.current)
-        
-        // Assign positions in clockwise order starting from current player at bottom
-        const positionOrder: Player['position'][] = []
-        
-        if (playerCount === 2) {
-            // 2 players: bottom and top
-            positionOrder[myIndex] = 'bottom'
-            positionOrder[(myIndex + 1) % playerCount] = 'top'
-        } else if (playerCount === 3) {
-            // 3 players: bottom, top, left/right
-            positionOrder[myIndex] = 'bottom'
-            positionOrder[(myIndex + 1) % playerCount] = 'top'
-            positionOrder[(myIndex + 2) % playerCount] = 'left'
-        } else if (playerCount === 4) {
-            // 4 players: bottom, left, top, right (clockwise)
-            positionOrder[myIndex] = 'bottom'
-            positionOrder[(myIndex + 1) % playerCount] = 'left'
-            positionOrder[(myIndex + 2) % playerCount] = 'top'
-            positionOrder[(myIndex + 3) % playerCount] = 'right'
-        }
-        
-        // Assign positions to players
-        playerOrder.forEach((playerId, index) => {
-            playerPositions[playerId] = positionOrder[index]
-        })
-        
-        console.log('Player positions:', playerPositions)
 
         const newPlayers: Player[] = mpConnectedPlayers.map((cp) => ({
             id: cp.id as Player['id'],
             hand: [],
             score: 0,
-            position: playerPositions[cp.id] || 'top',
+            position: 'top', // Temporary, will be recalculated on each client
             name: cp.name,
             isHuman: true,
         }))
@@ -919,7 +919,7 @@ export default function UnoGame() {
         }
         
         console.log('Game starting - First player:', firstPlayer)
-        console.log('Player positions assigned:', playerPositions)
+        console.log('Player order:', playerOrder)
 
         setPlayers(newPlayers);             playersRef.current     = newPlayers
         setDeckState(newDeck);              deckRef.current        = newDeck
@@ -948,7 +948,6 @@ export default function UnoGame() {
                 score: p.score,
                 handSize: p.hand.length,
             })),
-            playerPositions: playerPositions,
             firstTurn: firstPlayer,
             direction: 'clockwise',
             drawAmount: drawAmount,
