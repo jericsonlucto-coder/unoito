@@ -24,27 +24,13 @@ async function hmacSHA256(secret: string, message: string): Promise<string> {
         .join('')
 }
 
-async function computeMd5Fallback(message: string): Promise<string> {
-    let hash = 0
-    for (let i = 0; i < message.length; i++) {
-        const char = message.charCodeAt(i)
-        hash = ((hash << 5) - hash) + char
-        hash = hash & hash
-    }
-    return Math.abs(hash).toString(16).padStart(8, '0')
-}
-
 async function computeMd5(message: string): Promise<string> {
-    try {
-        const encoder = new TextEncoder()
-        const data = encoder.encode(message)
-        const hashBuffer = await crypto.subtle.digest('MD5', data)
-        return Array.from(new Uint8Array(hashBuffer))
-            .map(b => b.toString(16).padStart(2, '0'))
-            .join('')
-    } catch {
-        return computeMd5Fallback(message)
-    }
+    const encoder = new TextEncoder()
+    const data = encoder.encode(message)
+    const hashBuffer = await crypto.subtle.digest('MD5', data)
+    return Array.from(new Uint8Array(hashBuffer))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('')
 }
 
 export async function POST(req: NextRequest) {
@@ -62,14 +48,14 @@ export async function POST(req: NextRequest) {
         const timestamp = Math.floor(Date.now() / 1000).toString()
         const path = `/apps/${PUSHER_APP_ID}/events`
         
-        // IMPORTANT: data must be a JSON string, not an object
-        const dataString = JSON.stringify(data)
+        // Stringify the data properly
+        const dataString = typeof data === 'string' ? data : JSON.stringify(data)
         
         // Create the exact JSON string that will be sent to Pusher
         const pusherBody = JSON.stringify({
             channel: channel,
             name: event,
-            data: dataString,  // Send as string, not object
+            data: dataString,
         })
         
         // Compute MD5 on the EXACT body that will be sent
@@ -95,12 +81,6 @@ export async function POST(req: NextRequest) {
         })
 
         const url = `https://api-${PUSHER_CLUSTER}.pusher.com${path}?${params}`
-
-        console.log('Sending to Pusher:', {
-            url,
-            body: pusherBody,
-            bodyMd5
-        })
 
         const pusherRes = await fetch(url, {
             method: 'POST',
