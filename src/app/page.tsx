@@ -480,7 +480,7 @@ export default function UnoGame() {
     // #region INITIALIZE GAME FROM START
     const initializeGameFromStart = useCallback(async (payload: any) => {
         console.log('Initializing game from start:', payload)
-        const { playerOrder, startCard, players: playerInfo, firstTurn, direction: startDirection, drawAmount } = payload
+        const { playerOrder, startCard, players: playerInfo, firstTurn, direction: startDirection, drawAmount, playerPositions } = payload
         
         // Set up player order
         setPlayerOrderState(playerOrder)
@@ -490,12 +490,12 @@ export default function UnoGame() {
         let newDeck = createDeck()
         newDeck = shuffleDeck(newDeck)
         
-        // Initialize players with correct IDs and names
-        const initializedPlayers: Player[] = playerInfo.map((info: any, index: number) => ({
+        // Initialize players with correct IDs, names, and positions
+        const initializedPlayers: Player[] = playerInfo.map((info: any) => ({
             id: info.id as Player['id'],
             hand: [],
             score: info.score || 0,
-            position: ['bottom', 'top', 'left', 'right'][index] as Player['position'],
+            position: playerPositions?.[info.id] || (info.id === myPlayerIdRef.current ? 'bottom' : 'top'),
             name: info.name,
             isHuman: true,
         }))
@@ -582,7 +582,7 @@ export default function UnoGame() {
                 const msg = drawAmount ? `Start card is Draw ${drawAmount}! Opponent draws ${drawAmount} cards. It's your turn! 🎮` : "It's your turn! 🎮"
                 alert(msg)
             }, 500)
-        } else if (drawAmount) {
+        } else if (drawAmount && drawPlayerId === myPlayerIdRef.current) {
             setTimeout(() => {
                 alert(`Start card is Draw ${drawAmount}! You draw ${drawAmount} cards.`)
             }, 500)
@@ -779,13 +779,26 @@ export default function UnoGame() {
         const count = Math.min(mpConnectedPlayers.length, 4)
         const order = playerIds.slice(0, count) as Player['id'][]
 
-        const newPlayers: Player[] = mpConnectedPlayers.slice(0, count).map((cp, i) => ({
-            id:       playerIds[i] as Player['id'],
-            hand:     [],
-            score:    0,
-            position: positions[i],
-            name:     cp.name,
-            isHuman:  true,
+        // Create player positions mapping
+        const playerPositions: { [key: string]: Player['position'] } = {}
+        playerPositions[myPlayerIdRef.current] = 'bottom'
+        
+        // Assign positions to other players
+        let positionIndex = 1
+        for (const player of mpConnectedPlayers.slice(0, count)) {
+            if (player.id !== myPlayerIdRef.current) {
+                playerPositions[player.id] = positions[positionIndex % positions.length]
+                positionIndex++
+            }
+        }
+
+        const newPlayers: Player[] = mpConnectedPlayers.slice(0, count).map((cp) => ({
+            id: cp.id as Player['id'],
+            hand: [],
+            score: 0,
+            position: playerPositions[cp.id] || 'top',
+            name: cp.name,
+            isHuman: true,
         }))
 
         let newDeck = createDeck()
@@ -797,61 +810,37 @@ export default function UnoGame() {
             }
         }
 
-        // Randomly select a start card (can be any card from the deck)
+        // Randomly select a start card
         const randomIndex = Math.floor(Math.random() * newDeck.length)
         const startCard = newDeck.splice(randomIndex, 1)[0]
         
         const newPlayPile = [startCard]
         
         // Determine who goes first (random player)
-        const firstPlayerIndex = Math.floor(Math.random() * order.length)
+        let firstPlayerIndex = Math.floor(Math.random() * order.length)
         let firstPlayer = order[firstPlayerIndex]
         let drawAmount = 0
+        let drawPlayerId: Player['id'] | null = null
         
         // Handle special cards as start cards
         if (startCard.value === 12) { // Draw 2
             drawAmount = 2
             audioManager.play('plusCard')
-            // Next player draws 2 cards and turn passes to the player after
             const nextPlayerIndex = (firstPlayerIndex + 1) % order.length
-            const drawPlayer = newPlayers.find(p => p.id === order[nextPlayerIndex])
-            if (drawPlayer) {
-                for (let i = 0; i < 2; i++) {
-                    if (newDeck.length > 0) {
-                        drawPlayer.hand.push(newDeck.shift()!)
-                    }
-                }
-            }
-            // Skip the player who drew cards
+            drawPlayerId = order[nextPlayerIndex]
             firstPlayer = order[(firstPlayerIndex + 2) % order.length]
         } else if (startCard.value === 14) { // Wild Draw 4
             drawAmount = 4
             audioManager.play('plusCard')
-            // Next player draws 4 cards and turn passes to the player after
             const nextPlayerIndex = (firstPlayerIndex + 1) % order.length
-            const drawPlayer = newPlayers.find(p => p.id === order[nextPlayerIndex])
-            if (drawPlayer) {
-                for (let i = 0; i < 4; i++) {
-                    if (newDeck.length > 0) {
-                        drawPlayer.hand.push(newDeck.shift()!)
-                    }
-                }
-            }
-            // Skip the player who drew cards
+            drawPlayerId = order[nextPlayerIndex]
             firstPlayer = order[(firstPlayerIndex + 2) % order.length]
-            // For wild draw 4, the player who plays it chooses color
-            // Since it's the start card, we need to randomly choose a color
             const colors = ['rgb(255, 6, 0)', 'rgb(0, 170, 69)', 'rgb(0, 150, 224)', 'rgb(255, 222, 0)']
             const randomColor = colors[Math.floor(Math.random() * colors.length)]
             startCard.color = randomColor
         } else if (startCard.value === 10) { // Reverse
-            // Reverse the direction
-            const newDirection = 'counter-clockwise'
-            setDirection(newDirection)
-            directionRef.current = newDirection
-            // First player is still the same but direction is reversed
+            firstPlayer = order[firstPlayerIndex]
         } else if (startCard.value === 11) { // Skip
-            // Skip the first player, go to next
             firstPlayer = order[(firstPlayerIndex + 1) % order.length]
         } else if (startCard.color === 'any' && startCard.value === 13) { // Wild
             const colors = ['rgb(255, 6, 0)', 'rgb(0, 170, 69)', 'rgb(0, 150, 224)', 'rgb(255, 222, 0)']
@@ -890,9 +879,11 @@ export default function UnoGame() {
                 score: p.score,
                 handSize: p.hand.length,
             })),
+            playerPositions: playerPositions,
             firstTurn: firstPlayer,
             direction: 'clockwise',
             drawAmount: drawAmount,
+            drawPlayerId: drawPlayerId,
         }
         
         console.log('Broadcasting game-started:', gameStartPayload)
@@ -929,7 +920,6 @@ export default function UnoGame() {
             }
         }
 
-        // Random start card for AI mode too
         const randomIndex = Math.floor(Math.random() * newDeck.length)
         const startCard = newDeck.splice(randomIndex, 1)[0]
         const newPlayPile = [startCard]
@@ -1330,7 +1320,7 @@ export default function UnoGame() {
                 currentTurn,
                 myPlayerId: myPlayerIdRef.current,
                 isMyTurn: currentTurn === myPlayerIdRef.current,
-                players: players.map(p => ({ id: p.id, name: p.name, handSize: p.hand.length })),
+                players: players.map(p => ({ id: p.id, name: p.name, position: p.position, handSize: p.hand.length })),
                 topCard: playPile[playPile.length - 1]?.value
             })
         }
@@ -1355,7 +1345,11 @@ export default function UnoGame() {
     // #region DERIVED
     const topCard      = playPile[playPile.length - 1]
     const myPlayer     = players.find(p => p.id === myPlayerId)
-    const otherPlayers = players.filter(p => p.id !== myPlayerId)
+    const otherPlayers = players.filter(p => p.id !== myPlayerId).sort((a, b) => {
+        // Sort players by position for consistent display
+        const order = { top: 0, left: 1, right: 2 }
+        return (order[a.position as keyof typeof order] || 0) - (order[b.position as keyof typeof order] || 0)
+    })
 
     const getCardName = (card: CardType) => {
         if (card.color === 'any') return card.drawValue === 4 ? 'Wild Draw 4' : 'Wild Card'
@@ -1728,26 +1722,25 @@ export default function UnoGame() {
                 {gameMode === 'ai' ? '🤖 vs AI' : `🌐 ${roomCode}`}
             </div>
 
+            {/* Other Players - positioned around the table */}
             {otherPlayers.map(op => {
                 const isVertical = op.position === 'left' || op.position === 'right'
                 const isMyTurn   = currentTurn === op.id
-                const showFace   = gameMode === 'ai' ? (cpuVisible[op.id] ?? false) : false
 
                 return (
                     <div key={op.id} className={`cpu-player ${getPositionClass(op.position)}`}>
                         <div className="cpu-info" style={{
                             border: isMyTurn
-                                ? '2px solid #ffd700'
+                                ? '3px solid #ffd700'
                                 : '2px solid transparent',
                             borderRadius: '0.5rem',
                             padding: '0.2rem 0.5rem',
-                            background: isMyTurn ? 'rgba(255,215,0,0.12)' : 'transparent',
+                            background: isMyTurn ? 'rgba(255,215,0,0.2)' : 'rgba(0,0,0,0.5)',
                             transition: 'all 0.3s',
                         }}>
                             <div className="cpu-name">
                                 {op.name}
                                 {isMyTurn && ' 🎯'}
-                                {op.isHuman && gameMode === 'multiplayer' && ' 👤'}
                             </div>
                             <div style={{ fontSize: '0.75rem', color: '#aaa' }}>
                                 {op.hand.length} cards · {op.score} pts
@@ -1755,11 +1748,11 @@ export default function UnoGame() {
                         </div>
 
                         <div className={isVertical ? 'cpu-hand-vertical' : 'cpu-hand'}>
-                            {op.hand.map((card, i) => (
+                            {op.hand.map((_, i) => (
                                 <Image
                                     key={i}
-                                    src={showFace ? card.src : '/images/back.png'}
-                                    alt="card"
+                                    src={'/images/back.png'}
+                                    alt="card back"
                                     width={isVertical ? 90 : 60}
                                     height={isVertical ? 60 : 90}
                                     className={isVertical ? 'cpu-card-vertical' : 'cpu-card'}
@@ -1787,7 +1780,7 @@ export default function UnoGame() {
                             <span className="turn-player">🎮 YOUR TURN 🎮</span>
                         ) : (
                             <span className="turn-cpu">
-                                🎯 {players.find(p => p.id === currentTurn)?.name ?? currentTurn}&apos;s TURN
+                                🎯 {players.find(p => p.id === currentTurn)?.name}&apos;s TURN
                             </span>
                         )}
                     </p>
@@ -1853,16 +1846,17 @@ export default function UnoGame() {
                             fontWeight: p.id === myPlayerId ? 'bold' : 'normal',
                             fontSize: '0.88rem',
                         }}>
-                            {p.id === myPlayerId ? '👤' : p.isHuman ? '👥' : '🤖'} {p.name}: {p.score}
+                            {p.id === myPlayerId ? '👤' : '👥'} {p.name}: {p.score}
                         </span>
                     ))}
                 </div>
             </div>
 
+            {/* Player's hand (bottom) */}
             <div className="player-bottom">
                 <div className="player-info">
                     <div className="player-name">
-                        {myPlayer?.name ?? 'YOU'}
+                        {myPlayer?.name ?? 'YOU'} (You)
                         {currentTurn === myPlayerId && ' 🎯'}
                     </div>
                     <div style={{ fontSize: '0.8rem', color: '#aaa' }}>
