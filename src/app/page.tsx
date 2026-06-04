@@ -349,21 +349,30 @@ export default function UnoGame() {
 
                 let updatedPlayers: Player[] = []
                 
+                // Always preserve positions from existing players
                 if (receivedUpdatedPlayers && Array.isArray(receivedUpdatedPlayers)) {
-                    updatedPlayers = receivedUpdatedPlayers.map((p: any) => ({
-                        ...p,
-                        hand: p.hand.map((cardData: any) => 
-                            new Card(
-                                cardData.color,
-                                cardData.value,
-                                cardData.points,
-                                cardData.value === 0 || (cardData.value >= 1 && cardData.value <= 9),
-                                cardData.drawValue,
-                                cardData.src
-                            )
-                        ),
-                    }))
+                    // When receiving updated players, preserve the positions from current players
+                    updatedPlayers = receivedUpdatedPlayers.map((p: any) => {
+                        const existingPlayer = playersRef.current.find(ex => ex.id === p.id)
+                        return {
+                            ...p,
+                            hand: p.hand.map((cardData: any) => 
+                                new Card(
+                                    cardData.color,
+                                    cardData.value,
+                                    cardData.points,
+                                    cardData.value === 0 || (cardData.value >= 1 && cardData.value <= 9),
+                                    cardData.drawValue,
+                                    cardData.src
+                                )
+                            ),
+                            // Preserve the position from existing player data
+                            position: existingPlayer?.position || p.position || 'top',
+                        }
+                    })
+                    console.log('Updated players with preserved positions:', updatedPlayers.map(p => ({ id: p.id, position: p.position })))
                 } else {
+                    // Fallback
                     updatedPlayers = playersRef.current.map(p =>
                         p.id === playerId ? { ...p, hand: newHand } : p
                     )
@@ -575,11 +584,11 @@ export default function UnoGame() {
         
         console.log('Player positions:', playerPositions)
         
-        // Reconstruct players with their own names
+        // Reconstruct players with their own names and preserve positions
         const initializedPlayers: Player[] = playerInfo.map((info: any) => {
             const isMe = info.id === myPlayerIdRef.current
+            // Use the calculated position from above
             const position = playerPositions[info.id] || (isMe ? 'bottom' : 'top')
-            // Use the actual name from the payload, add (You) only for the current player
             const displayName = isMe ? `${info.name} (You)` : info.name
             
             const hand = info.hand.map((cardData: any) => 
@@ -1070,7 +1079,7 @@ export default function UnoGame() {
     }, [])
     // #endregion
 
-    // #region CPU LOGIC (simplified)
+    // #region CPU LOGIC
     const playCPU = useCallback(async (cpuId: Player['id']) => {
         if (currentTurnRef.current !== cpuId) return
         if (!gameOnRef.current) return
@@ -1196,6 +1205,7 @@ export default function UnoGame() {
             directionRef.current = newDir
         }
 
+        // Update current player's hand first
         let updatedPlayers = playersRef.current.map(p =>
             p.id === myPlayerIdRef.current ? { ...p, hand: newPlayerHand } : p
         )
@@ -1266,6 +1276,7 @@ export default function UnoGame() {
         currentTurnRef.current = nextTurn
 
         if (gameModeRef.current === 'multiplayer') {
+            // Send updated players WITH their positions preserved
             await broadcastAction('PLAY_CARD', {
                 card: playedCard,
                 newHand: newPlayerHand,
@@ -1276,6 +1287,9 @@ export default function UnoGame() {
                 drawTargetPlayer: nextTurn,
                 updatedPlayers: updatedPlayers.map(p => ({
                     id: p.id,
+                    name: p.name,
+                    score: p.score,
+                    position: p.position, // IMPORTANT: Include position
                     hand: p.hand.map(c => ({
                         color: c.color,
                         value: c.value,
@@ -1283,7 +1297,6 @@ export default function UnoGame() {
                         drawValue: c.drawValue,
                         src: c.src,
                     })),
-                    score: p.score,
                 })),
             })
         }
@@ -1436,7 +1449,7 @@ export default function UnoGame() {
     // #endregion
 
     // =====================================================================
-    // #region MENU
+    // #region MENU (same as before)
     // =====================================================================
     if (gameMode === 'menu') {
         return (
@@ -1502,7 +1515,7 @@ export default function UnoGame() {
     // #endregion
 
     // =====================================================================
-    // #region MULTIPLAYER LOBBY (same as before - kept for brevity)
+    // #region MULTIPLAYER LOBBY (same as before)
     // =====================================================================
     if (gameMode === 'multiplayer' && mpState !== 'playing') {
         return (
@@ -1758,6 +1771,8 @@ export default function UnoGame() {
             {otherPlayers.map(op => {
                 const isMyTurn = currentTurn === op.id
                 const isVertical = op.position === 'left' || op.position === 'right'
+                
+                console.log(`Rendering player: ${op.name}, position: ${op.position}, class: ${getPositionClass(op.position)}`)
                 
                 return (
                     <div key={op.id} className={`cpu-player ${getPositionClass(op.position)}`}>
