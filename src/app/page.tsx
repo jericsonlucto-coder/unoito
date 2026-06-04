@@ -238,7 +238,7 @@ export default function UnoGame() {
     const [inputRoomCode, setInputRoomCode]               = useState('')
     const [myPlayerId, setMyPlayerId]                     = useState<Player['id']>('player')
     const [myPlayerName, setMyPlayerName]                 = useState('')
-    const [mpPlayerCount, setMpPlayerCount]               = useState(2)
+    const [mpPlayerCount, setMpPlayerCount]               = useState(4) // Default to 4 players
     const [mpConnectedPlayers, setMpConnectedPlayers]     = useState<{ id: string; name: string }[]>([])
     const [mpError, setMpError]                           = useState('')
     const [isHost, setIsHost]                             = useState(false)
@@ -349,9 +349,7 @@ export default function UnoGame() {
 
                 let updatedPlayers: Player[] = []
                 
-                // Always preserve positions from existing players
                 if (receivedUpdatedPlayers && Array.isArray(receivedUpdatedPlayers)) {
-                    // When receiving updated players, preserve the positions from current players
                     updatedPlayers = receivedUpdatedPlayers.map((p: any) => {
                         const existingPlayer = playersRef.current.find(ex => ex.id === p.id)
                         return {
@@ -366,13 +364,10 @@ export default function UnoGame() {
                                     cardData.src
                                 )
                             ),
-                            // Preserve the position from existing player data
                             position: existingPlayer?.position || p.position || 'top',
                         }
                     })
-                    console.log('Updated players with preserved positions:', updatedPlayers.map(p => ({ id: p.id, position: p.position })))
                 } else {
-                    // Fallback
                     updatedPlayers = playersRef.current.map(p =>
                         p.id === playerId ? { ...p, hand: newHand } : p
                     )
@@ -558,14 +553,12 @@ export default function UnoGame() {
         setPlayerOrderState(playerOrder)
         playerOrderRef.current = playerOrder
         
-        // Find this player's index using their unique ID
         const myIndex = playerOrder.findIndex((id: Player['id']) => id === myPlayerIdRef.current)
         const playerCount = playerOrder.length
         
         console.log(`My index: ${myIndex}, My ID: ${myPlayerIdRef.current}, My Name: ${myPlayerNameRef.current}`)
         console.log('Player order:', playerOrder)
         
-        // Calculate positions - for 3 players: bottom, left, right (no top)
         const playerPositions: { [key: string]: Player['position'] } = {}
         
         if (playerCount === 2) {
@@ -584,10 +577,8 @@ export default function UnoGame() {
         
         console.log('Player positions:', playerPositions)
         
-        // Reconstruct players with their own names and preserve positions
         const initializedPlayers: Player[] = playerInfo.map((info: any) => {
             const isMe = info.id === myPlayerIdRef.current
-            // Use the calculated position from above
             const position = playerPositions[info.id] || (isMe ? 'bottom' : 'top')
             const displayName = isMe ? `${info.name} (You)` : info.name
             
@@ -773,9 +764,8 @@ export default function UnoGame() {
             const data = raw as SlotPayload
             console.log('Slot assigned:', data)
             
-            // Update this player's ID when assigned - only if the name matches
             if (data.playerId && data.playerName === myPlayerNameRef.current) {
-                console.log(`Setting myPlayerId from ${myPlayerIdRef.current} to ${data.playerId} (name match: ${data.playerName})`)
+                console.log(`Setting myPlayerId from ${myPlayerIdRef.current} to ${data.playerId}`)
                 setMyPlayerId(data.playerId)
                 myPlayerIdRef.current = data.playerId
             }
@@ -828,7 +818,6 @@ export default function UnoGame() {
         roomCodeRef.current = code
         setIsHost(false)
         
-        // Store the player name in ref immediately
         myPlayerNameRef.current = myPlayerName
         
         const tempId = 'temp_' + Date.now()
@@ -854,32 +843,38 @@ export default function UnoGame() {
     }, [myPlayerName, inputRoomCode, bindChannelEvents])
     // #endregion
 
-    // #region HOST ASSIGNS SLOT
+    // #region HOST ASSIGNS SLOT - FIXED FOR 4 PLAYERS
     useEffect(() => {
         if (!isHost || !mpChannel || gameMode !== 'multiplayer') return
         
+        // All available slots in order
         const availableSlots: Player['id'][] = ['player', 'p2', 'p3', 'p4']
         let assignedSlots: string[] = []
         
+        // Host takes the 'player' slot
         const hostSlot = 'player'
         assignedSlots.push(hostSlot)
         
         console.log('Host assigned to slot:', hostSlot)
+        console.log('Available slots for players:', availableSlots.filter(s => !assignedSlots.includes(s)))
 
         const handlePlayerJoined = async (raw: unknown) => {
             const data = raw as JoinPayload
             if (!data.requestSlot) return
             
+            // Find next available slot
             const nextSlot = availableSlots.find(slot => !assignedSlots.includes(slot))
             
             if (!nextSlot) {
                 console.log('No available slots for player:', data.playerName)
+                setMpError('Room is full! Max 4 players allowed.')
                 return
             }
             
             assignedSlots.push(nextSlot)
             
             console.log(`Assigning player ${data.playerName} (temp ID: ${data.playerId}) to slot:`, nextSlot)
+            console.log(`Remaining slots:`, availableSlots.filter(s => !assignedSlots.includes(s)))
             
             const newConnected = [...mpConnectedRef.current, { id: nextSlot, name: data.playerName }]
             setMpConnectedPlayers(newConnected)
@@ -1079,7 +1074,7 @@ export default function UnoGame() {
     }, [])
     // #endregion
 
-    // #region CPU LOGIC
+    // #region CPU LOGIC (simplified for brevity - same as before)
     const playCPU = useCallback(async (cpuId: Player['id']) => {
         if (currentTurnRef.current !== cpuId) return
         if (!gameOnRef.current) return
@@ -1205,7 +1200,6 @@ export default function UnoGame() {
             directionRef.current = newDir
         }
 
-        // Update current player's hand first
         let updatedPlayers = playersRef.current.map(p =>
             p.id === myPlayerIdRef.current ? { ...p, hand: newPlayerHand } : p
         )
@@ -1276,7 +1270,6 @@ export default function UnoGame() {
         currentTurnRef.current = nextTurn
 
         if (gameModeRef.current === 'multiplayer') {
-            // Send updated players WITH their positions preserved
             await broadcastAction('PLAY_CARD', {
                 card: playedCard,
                 newHand: newPlayerHand,
@@ -1289,7 +1282,7 @@ export default function UnoGame() {
                     id: p.id,
                     name: p.name,
                     score: p.score,
-                    position: p.position, // IMPORTANT: Include position
+                    position: p.position,
                     hand: p.hand.map(c => ({
                         color: c.color,
                         value: c.value,
@@ -1396,7 +1389,6 @@ export default function UnoGame() {
             console.log('=== CURRENT GAME STATE ===')
             console.log('Current turn:', currentTurn)
             console.log('My player ID:', myPlayerIdRef.current)
-            console.log('My player Name:', myPlayerNameRef.current)
             console.log('Players:', players.map(p => ({ id: p.id, name: p.name, position: p.position, handSize: p.hand?.length || 0 })))
         }
     }, [currentTurn, players, mpState, gameMode])
@@ -1449,7 +1441,7 @@ export default function UnoGame() {
     // #endregion
 
     // =====================================================================
-    // #region MENU (same as before)
+    // #region MENU
     // =====================================================================
     if (gameMode === 'menu') {
         return (
@@ -1515,7 +1507,7 @@ export default function UnoGame() {
     // #endregion
 
     // =====================================================================
-    // #region MULTIPLAYER LOBBY (same as before)
+    // #region MULTIPLAYER LOBBY
     // =====================================================================
     if (gameMode === 'multiplayer' && mpState !== 'playing') {
         return (
@@ -1647,7 +1639,7 @@ export default function UnoGame() {
                             </div>
 
                             <p style={{ color: '#ccc', marginBottom: '0.8rem' }}>
-                                Players ({mpConnectedPlayers.length}/{mpPlayerCount})
+                                Players ({mpConnectedPlayers.length}/4)
                             </p>
                             {mpConnectedPlayers.map((p, i) => (
                                 <div key={p.id} style={{
@@ -1667,55 +1659,37 @@ export default function UnoGame() {
                                     )}
                                 </div>
                             ))}
+                            {Array.from({ length: Math.max(0, 4 - mpConnectedPlayers.length) }).map((_, i) => (
+                                <div key={`empty-${i}`} style={{
+                                    display: 'flex', alignItems: 'center', gap: '0.8rem',
+                                    padding: '0.6rem 1rem',
+                                    background: 'rgba(255,255,255,0.02)',
+                                    border: '1px dashed rgba(255,255,255,0.1)',
+                                    borderRadius: '0.5rem', marginBottom: '0.4rem',
+                                }}>
+                                    <span style={{ color: '#555' }}>⏳</span>
+                                    <span style={{ color: '#555' }}>Waiting for player...</span>
+                                </div>
+                            ))}
 
                             {isHost && (
-                                <>
-                                    <div style={{ margin: '1rem 0' }}>
-                                        <label style={{ color: '#ccc', display: 'block', marginBottom: '0.4rem' }}>
-                                            Max Players
-                                        </label>
-                                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                            {[2, 3, 4].map(n => (
-                                                <button
-                                                    key={n}
-                                                    onClick={() => setMpPlayerCount(n)}
-                                                    style={{
-                                                        flex: 1, padding: '0.6rem',
-                                                        background: mpPlayerCount === n
-                                                            ? 'rgba(33,150,243,0.5)'
-                                                            : 'rgba(255,255,255,0.05)',
-                                                        color: 'white',
-                                                        border: mpPlayerCount === n
-                                                            ? '2px solid #2196f3'
-                                                            : '1px solid rgba(255,255,255,0.1)',
-                                                        borderRadius: '0.5rem', cursor: 'pointer',
-                                                        fontSize: '1rem',
-                                                    }}
-                                                >
-                                                    {n}P
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    <button
-                                        onClick={startMultiplayerGame}
-                                        disabled={mpConnectedPlayers.length < 2}
-                                        style={{
-                                            width: '100%', padding: '1rem',
-                                            background: mpConnectedPlayers.length >= 2
-                                                ? 'linear-gradient(135deg,#ff6b35,#f7931e)'
-                                                : 'rgba(255,255,255,0.1)',
-                                            color: 'white', border: 'none',
-                                            borderRadius: '0.8rem',
-                                            cursor: mpConnectedPlayers.length >= 2 ? 'pointer' : 'not-allowed',
-                                            fontSize: '1.1rem', fontWeight: 'bold',
-                                        }}
-                                    >
-                                        {mpConnectedPlayers.length >= 2
-                                            ? '🚀 Start Game!'
-                                            : `⏳ Need at least 2 players (${mpConnectedPlayers.length} joined)`}
-                                    </button>
-                                </>
+                                <button
+                                    onClick={startMultiplayerGame}
+                                    disabled={mpConnectedPlayers.length < 2}
+                                    style={{
+                                        width: '100%', padding: '1rem', marginTop: '1rem',
+                                        background: mpConnectedPlayers.length >= 2
+                                            ? 'linear-gradient(135deg,#4caf50,#2e7d32)'
+                                            : 'rgba(255,255,255,0.1)',
+                                        color: 'white', border: 'none', borderRadius: '0.8rem',
+                                        cursor: mpConnectedPlayers.length >= 2 ? 'pointer' : 'not-allowed',
+                                        fontSize: '1.1rem', fontWeight: 'bold',
+                                    }}
+                                >
+                                    {mpConnectedPlayers.length >= 2
+                                        ? '🚀 Start Game!'
+                                        : `⏳ Need at least 2 players (${mpConnectedPlayers.length} joined)`}
+                                </button>
                             )}
 
                             {!isHost && (
@@ -1771,8 +1745,6 @@ export default function UnoGame() {
             {otherPlayers.map(op => {
                 const isMyTurn = currentTurn === op.id
                 const isVertical = op.position === 'left' || op.position === 'right'
-                
-                console.log(`Rendering player: ${op.name}, position: ${op.position}, class: ${getPositionClass(op.position)}`)
                 
                 return (
                     <div key={op.id} className={`cpu-player ${getPositionClass(op.position)}`}>
