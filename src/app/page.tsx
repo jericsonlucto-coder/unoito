@@ -640,6 +640,10 @@ export default function UnoGame() {
                 startCard.drawValue,
                 startCard.src
             )
+        } else {
+            // Fallback - create a default number card if no start card provided
+            console.warn('No start card provided, creating default')
+            startCardObj = new Card('rgb(255, 6, 0)', 0, 0, true, 0, '/images/red0.png')
         }
         
         const newPlayPile = startCardObj ? [startCardObj] : []
@@ -791,7 +795,6 @@ export default function UnoGame() {
             console.log('Current myPlayerNameRef:', myPlayerNameRef.current)
             console.log('Current myPlayerId:', myPlayerIdRef.current)
             
-            // Update this player's ID when assigned - match by name
             if (data.playerId && data.playerName === myPlayerNameRef.current) {
                 console.log(`Setting myPlayerId from ${myPlayerIdRef.current} to ${data.playerId} (name match: ${data.playerName})`)
                 setMyPlayerId(data.playerId)
@@ -925,7 +928,7 @@ export default function UnoGame() {
     }, [isHost, mpChannel, gameMode])
     // #endregion
 
-    // #region START MULTIPLAYER GAME
+    // #region START MULTIPLAYER GAME - WITH VALID START CARD
     const startMultiplayerGame = useCallback(async () => {
         if (!isHost) return
         if (mpConnectedPlayers.length < 2) { setMpError('Need at least 2 players'); return }
@@ -958,16 +961,53 @@ export default function UnoGame() {
             }
         }
 
-        const randomIndex = Math.floor(Math.random() * newDeck.length)
-        const startCard = newDeck.splice(randomIndex, 1)[0]
-        const newPlayPile = [startCard]
+        // Find a valid start card (number card 0-9, not wild or action card)
+        let startCardIndex = -1
+        let startCard: CardType | null = null
         
+        // Search for a number card (value 0-9) that is not wild
+        for (let i = 0; i < newDeck.length; i++) {
+            const card = newDeck[i]
+            if (card.value >= 0 && card.value <= 9 && card.color !== 'any') {
+                startCardIndex = i
+                startCard = newDeck[i]
+                break
+            }
+        }
+        
+        // If no number card found (shouldn't happen), take any card except wild
+        if (startCardIndex === -1) {
+            for (let i = 0; i < newDeck.length; i++) {
+                const card = newDeck[i]
+                if (card.color !== 'any') {
+                    startCardIndex = i
+                    startCard = newDeck[i]
+                    break
+                }
+            }
+        }
+        
+        // Remove the start card from deck
+        if (startCardIndex !== -1 && startCard) {
+            newDeck.splice(startCardIndex, 1)
+        } else if (newDeck.length > 0) {
+            // Ultimate fallback - take the first card
+            startCard = newDeck.shift()!
+        }
+        
+        const newPlayPile = startCard ? [startCard] : []
+        
+        console.log('Start card selected:', startCard?.value, startCard?.color, startCard?.drawValue)
+        
+        // Determine first player (random)
         const firstPlayerIndex = Math.floor(Math.random() * playerOrder.length)
         let firstPlayer = playerOrder[firstPlayerIndex]
         let drawAmount = 0
         let drawPlayerId: Player['id'] | null = null
         
-        if (startCard.value === 12) {
+        // Since we ensured start card is a number card (0-9), no special handling needed
+        // But if somehow an action card slipped through, handle it
+        if (startCard && startCard.value === 12) {
             drawAmount = 2
             audioManager.play('plusCard')
             const nextPlayerIndex = (firstPlayerIndex + 1) % playerOrder.length
@@ -981,7 +1021,7 @@ export default function UnoGame() {
                 }
             }
             firstPlayer = drawPlayerId
-        } else if (startCard.value === 14) {
+        } else if (startCard && startCard.value === 14) {
             drawAmount = 4
             audioManager.play('plusCard')
             const nextPlayerIndex = (firstPlayerIndex + 1) % playerOrder.length
@@ -994,21 +1034,22 @@ export default function UnoGame() {
                     }
                 }
             }
+            // Set random color for wild draw 4
             const colors = ['rgb(255, 6, 0)', 'rgb(0, 170, 69)', 'rgb(0, 150, 224)', 'rgb(255, 222, 0)']
             const randomColor = colors[Math.floor(Math.random() * colors.length)]
-            startCard.color = randomColor
+            if (startCard) startCard.color = randomColor
             firstPlayer = drawPlayerId
-        } else if (startCard.value === 10) {
-            firstPlayer = playerOrder[firstPlayerIndex]
-        } else if (startCard.value === 11) {
+        } else if (startCard && startCard.value === 10) {
+            // Reverse card - direction changes but first player stays
+            console.log('Reverse card - direction will be counter-clockwise')
+        } else if (startCard && startCard.value === 11) {
+            // Skip card - skip first player
             firstPlayer = playerOrder[(firstPlayerIndex + 1) % playerOrder.length]
-        } else if (startCard.color === 'any' && startCard.value === 13) {
-            const colors = ['rgb(255, 6, 0)', 'rgb(0, 170, 69)', 'rgb(0, 150, 224)', 'rgb(255, 222, 0)']
-            const randomColor = colors[Math.floor(Math.random() * colors.length)]
-            startCard.color = randomColor
+            console.log(`Skip card! First player skipped, now ${firstPlayer}'s turn`)
         }
         
         console.log('Final first player:', firstPlayer)
+        console.log('Start card is number card:', startCard?.value, startCard?.color)
 
         setPlayers(newPlayers)
         playersRef.current = newPlayers
@@ -1032,13 +1073,13 @@ export default function UnoGame() {
 
         const gameStartPayload = {
             playerOrder: playerOrder,
-            startCard: {
+            startCard: startCard ? {
                 color: startCard.color,
                 value: startCard.value,
                 points: startCard.points,
                 drawValue: startCard.drawValue,
                 src: startCard.src,
-            },
+            } : null,
             players: newPlayers.map(p => ({
                 id: p.id,
                 name: p.name,
@@ -1059,12 +1100,12 @@ export default function UnoGame() {
             drawPlayerId: drawPlayerId,
         }
         
-        console.log('Broadcasting game-started payload with full hand data')
+        console.log('Broadcasting game-started payload with valid number card start')
         await pusherTrigger(`uno-room-${roomCode}`, 'game-started', gameStartPayload)
     }, [isHost, mpConnectedPlayers, roomCode])
     // #endregion
 
-    // #region NEW AI GAME
+    // #region NEW AI GAME - WITH VALID START CARD
     const newAIGame = useCallback((existingScores?: { [key: string]: number }) => {
         setGameOn(true);                    gameOnRef.current      = true
         setColorPickerOpen(false);          colorPickerRef.current = false
@@ -1089,18 +1130,50 @@ export default function UnoGame() {
 
         for (let i = 0; i < 7; i++) {
             for (let j = 0; j < newPlayers.length; j++) {
-                newPlayers[j].hand.push(newDeck.shift()!)
+                if (newDeck.length > 0) {
+                    newPlayers[j].hand.push(newDeck.shift()!)
+                }
             }
         }
 
-        const randomIndex = Math.floor(Math.random() * newDeck.length)
-        const startCard = newDeck.splice(randomIndex, 1)[0]
-        const newPlayPile = [startCard]
+        // Find a valid start card (number card 0-9)
+        let startCardIndex = -1
+        let startCard: CardType | null = null
+        
+        for (let i = 0; i < newDeck.length; i++) {
+            const card = newDeck[i]
+            if (card.value >= 0 && card.value <= 9 && card.color !== 'any') {
+                startCardIndex = i
+                startCard = newDeck[i]
+                break
+            }
+        }
+        
+        if (startCardIndex === -1) {
+            for (let i = 0; i < newDeck.length; i++) {
+                const card = newDeck[i]
+                if (card.color !== 'any') {
+                    startCardIndex = i
+                    startCard = newDeck[i]
+                    break
+                }
+            }
+        }
+        
+        if (startCardIndex !== -1 && startCard) {
+            newDeck.splice(startCardIndex, 1)
+        } else if (newDeck.length > 0) {
+            startCard = newDeck.shift()!
+        }
+        
+        const newPlayPile = startCard ? [startCard] : []
 
         setPlayers(newPlayers);             playersRef.current     = newPlayers
         setDeckState(newDeck);              deckRef.current        = newDeck
         setPlayPile(newPlayPile);           playPileRef.current    = newPlayPile
         setCurrentTurn('player');           currentTurnRef.current = 'player'
+        
+        console.log('AI Game - Start card:', startCard?.value, startCard?.color)
     }, [])
     // #endregion
 
