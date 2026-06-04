@@ -238,7 +238,7 @@ export default function UnoGame() {
     const [inputRoomCode, setInputRoomCode]               = useState('')
     const [myPlayerId, setMyPlayerId]                     = useState<Player['id']>('player')
     const [myPlayerName, setMyPlayerName]                 = useState('')
-    const [mpPlayerCount, setMpPlayerCount]               = useState(4) // Default to 4 players
+    const [mpPlayerCount, setMpPlayerCount]               = useState(4)
     const [mpConnectedPlayers, setMpConnectedPlayers]     = useState<{ id: string; name: string }[]>([])
     const [mpError, setMpError]                           = useState('')
     const [isHost, setIsHost]                             = useState(false)
@@ -352,8 +352,11 @@ export default function UnoGame() {
                 if (receivedUpdatedPlayers && Array.isArray(receivedUpdatedPlayers)) {
                     updatedPlayers = receivedUpdatedPlayers.map((p: any) => {
                         const existingPlayer = playersRef.current.find(ex => ex.id === p.id)
+                        // Add "(You)" back for the current player only
+                        const displayName = p.id === myPlayerIdRef.current ? `${p.name} (You)` : p.name
                         return {
                             ...p,
+                            name: displayName,
                             hand: p.hand.map((cardData: any) => 
                                 new Card(
                                     cardData.color,
@@ -490,7 +493,8 @@ export default function UnoGame() {
                     const updatedPlayersWithHands = playersRef.current.map(p => {
                         const updatedInfo = updatedPlayers.find((up: any) => up.id === p.id)
                         if (updatedInfo) {
-                            return { ...p, score: updatedInfo.score }
+                            const displayName = p.id === myPlayerIdRef.current ? `${updatedInfo.name} (You)` : updatedInfo.name
+                            return { ...p, score: updatedInfo.score, name: displayName }
                         }
                         return p
                     })
@@ -517,7 +521,8 @@ export default function UnoGame() {
                     const updatedPlayersWithFinalScores = playersRef.current.map(p => {
                         const finalInfo = finalScores.find((fs: any) => fs.id === p.id)
                         if (finalInfo) {
-                            return { ...p, score: finalInfo.score }
+                            const displayName = p.id === myPlayerIdRef.current ? `${finalInfo.name} (You)` : finalInfo.name
+                            return { ...p, score: finalInfo.score, name: displayName }
                         }
                         return p
                     })
@@ -580,6 +585,7 @@ export default function UnoGame() {
         const initializedPlayers: Player[] = playerInfo.map((info: any) => {
             const isMe = info.id === myPlayerIdRef.current
             const position = playerPositions[info.id] || (isMe ? 'bottom' : 'top')
+            // Add "(You)" only for the current player
             const displayName = isMe ? `${info.name} (You)` : info.name
             
             const hand = info.hand.map((cardData: any) => 
@@ -690,23 +696,23 @@ export default function UnoGame() {
         if (gameWinnerPlayer) {
             setGameOn(false)
             gameOnRef.current = false
-            setGameWinner(gameWinnerPlayer.id === myPlayerIdRef.current ? 'You' : gameWinnerPlayer.name)
+            setGameWinner(gameWinnerPlayer.id === myPlayerIdRef.current ? 'You' : gameWinnerPlayer.name.replace(' (You)', ''))
             setGameVisible(true)
             audioManager.play(gameWinnerPlayer.id === myPlayerIdRef.current ? 'winGame' : 'lose')
             
             if (gameModeRef.current === 'multiplayer') {
                 await broadcastAction('GAME_WINNER', {
                     winnerId: gameWinnerPlayer.id,
-                    winnerName: gameWinnerPlayer.name,
+                    winnerName: gameWinnerPlayer.name.replace(' (You)', ''),
                     finalScores: updatedPlayers.map(p => ({
                         id: p.id,
-                        name: p.name,
+                        name: p.name.replace(' (You)', ''),
                         score: p.score
                     }))
                 })
             }
         } else {
-            setRoundWinner(winner.id === myPlayerIdRef.current ? 'You' : winner.name)
+            setRoundWinner(winner.id === myPlayerIdRef.current ? 'You' : winner.name.replace(' (You)', ''))
             setRoundVisible(true)
             setGameOn(false)
             gameOnRef.current = false
@@ -715,12 +721,12 @@ export default function UnoGame() {
             if (gameModeRef.current === 'multiplayer') {
                 await broadcastAction('ROUND_WINNER', {
                     winnerId: winner.id,
-                    winnerName: winner.name,
+                    winnerName: winner.name.replace(' (You)', ''),
                     updatedPlayers: updatedPlayers.map(p => ({
                         id: p.id,
                         score: p.score,
                         handSize: p.hand.length,
-                        name: p.name,
+                        name: p.name.replace(' (You)', ''),
                     })),
                 })
             }
@@ -843,15 +849,13 @@ export default function UnoGame() {
     }, [myPlayerName, inputRoomCode, bindChannelEvents])
     // #endregion
 
-    // #region HOST ASSIGNS SLOT - FIXED FOR 4 PLAYERS
+    // #region HOST ASSIGNS SLOT
     useEffect(() => {
         if (!isHost || !mpChannel || gameMode !== 'multiplayer') return
         
-        // All available slots in order
         const availableSlots: Player['id'][] = ['player', 'p2', 'p3', 'p4']
         let assignedSlots: string[] = []
         
-        // Host takes the 'player' slot
         const hostSlot = 'player'
         assignedSlots.push(hostSlot)
         
@@ -862,7 +866,6 @@ export default function UnoGame() {
             const data = raw as JoinPayload
             if (!data.requestSlot) return
             
-            // Find next available slot
             const nextSlot = availableSlots.find(slot => !assignedSlots.includes(slot))
             
             if (!nextSlot) {
@@ -913,7 +916,7 @@ export default function UnoGame() {
             hand: [],
             score: 0,
             position: 'top',
-            name: cp.name,
+            name: cp.name, // No "(You)" here - will be added by each client
             isHuman: true,
         }))
 
@@ -1011,7 +1014,7 @@ export default function UnoGame() {
             },
             players: newPlayers.map(p => ({
                 id: p.id,
-                name: p.name,
+                name: p.name, // No "(You)" here
                 score: p.score,
                 hand: p.hand.map(card => ({
                     color: card.color,
@@ -1074,7 +1077,7 @@ export default function UnoGame() {
     }, [])
     // #endregion
 
-    // #region CPU LOGIC (simplified for brevity - same as before)
+    // #region CPU LOGIC
     const playCPU = useCallback(async (cpuId: Player['id']) => {
         if (currentTurnRef.current !== cpuId) return
         if (!gameOnRef.current) return
@@ -1270,6 +1273,7 @@ export default function UnoGame() {
         currentTurnRef.current = nextTurn
 
         if (gameModeRef.current === 'multiplayer') {
+            // Broadcast without "(You)" in names
             await broadcastAction('PLAY_CARD', {
                 card: playedCard,
                 newHand: newPlayerHand,
@@ -1280,7 +1284,7 @@ export default function UnoGame() {
                 drawTargetPlayer: nextTurn,
                 updatedPlayers: updatedPlayers.map(p => ({
                     id: p.id,
-                    name: p.name,
+                    name: p.name.replace(' (You)', ''), // Remove (You) for broadcast
                     score: p.score,
                     position: p.position,
                     hand: p.hand.map(c => ({
