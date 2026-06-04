@@ -64,13 +64,12 @@ export async function POST(req: NextRequest) {
         const path = `/apps/${PUSHER_APP_ID}/events`
         const bodyMd5 = await computeMd5(bodyString)
 
+        // IMPORTANT: Only include auth params, NOT channel/name
         const paramString = [
             `auth_key=${PUSHER_KEY}`,
             `auth_timestamp=${timestamp}`,
             `auth_version=1.0`,
             `body_md5=${bodyMd5}`,
-            `channel=${channel}`,
-            `name=${event}`,
         ].sort().join('&')
 
         const toSign = ['POST', path, paramString].join('\n')
@@ -81,9 +80,14 @@ export async function POST(req: NextRequest) {
             auth_timestamp: timestamp,
             auth_version: '1.0',
             body_md5: bodyMd5,
-            channel,
-            name: event,
             auth_signature: signature,
+        })
+
+        // The channel and name go in the BODY, not the URL
+        const pusherBody = JSON.stringify({
+            channel: channel,
+            name: event,
+            data: data,
         })
 
         const url = `https://api-${PUSHER_CLUSTER}.pusher.com${path}?${params}`
@@ -91,7 +95,7 @@ export async function POST(req: NextRequest) {
         const pusherRes = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: bodyString,
+            body: pusherBody,
         })
 
         const resText = await pusherRes.text()
