@@ -661,7 +661,7 @@ export default function UnoGame() {
             const data = raw as SlotPayload
             console.log('Slot assigned:', data)
             
-            if (data.playerId) {
+            if (data.playerId && data.playerName === myPlayerName) {
                 setMyPlayerId(data.playerId)
                 myPlayerIdRef.current = data.playerId
                 console.log('My player ID set to:', data.playerId)
@@ -670,9 +670,10 @@ export default function UnoGame() {
             if (data.allPlayers) {
                 setMpConnectedPlayers(data.allPlayers)
                 mpConnectedRef.current = data.allPlayers
+                console.log('Connected players updated:', data.allPlayers)
             }
         })
-    }, [applyGameAction, initializeGameFromStart])
+    }, [applyGameAction, initializeGameFromStart, myPlayerName])
     // #endregion
 
     // #region CREATE ROOM
@@ -682,20 +683,24 @@ export default function UnoGame() {
         setRoomCode(code)
         roomCodeRef.current = code
         setIsHost(true)
-        setMyPlayerId('player')
-        myPlayerIdRef.current = 'player'
+        
+        const hostId = 'player'
+        setMyPlayerId(hostId)
+        myPlayerIdRef.current = hostId
 
         const pusher = await getPusherInstance() as { subscribe: (ch: string) => PusherChannel }
         const channel = pusher.subscribe(`uno-room-${code}`)
         setMpChannel(channel)
 
-        const initialConnected = [{ id: 'player', name: myPlayerName }]
+        const initialConnected = [{ id: hostId, name: myPlayerName }]
         setMpConnectedPlayers(initialConnected)
         mpConnectedRef.current = initialConnected
 
         bindChannelEvents(channel)
         setMpState('waiting')
         setMpError('')
+        
+        console.log('Room created - Host ID:', hostId)
     }, [myPlayerName, bindChannelEvents])
     // #endregion
 
@@ -708,6 +713,10 @@ export default function UnoGame() {
         setRoomCode(code)
         roomCodeRef.current = code
         setIsHost(false)
+        
+        const tempId = 'temp_' + Date.now()
+        setMyPlayerId(tempId as Player['id'])
+        myPlayerIdRef.current = tempId as Player['id']
 
         const pusher = await getPusherInstance() as { subscribe: (ch: string) => PusherChannel }
         const channel = pusher.subscribe(`uno-room-${code}`)
@@ -716,37 +725,54 @@ export default function UnoGame() {
         bindChannelEvents(channel)
 
         await pusherTrigger(`uno-room-${code}`, 'player-joined', {
-            playerId:    'temp_' + Date.now(),
+            playerId:    tempId,
             playerName:  myPlayerName,
             requestSlot: true,
         })
 
         setMpState('waiting')
         setMpError('')
+        
+        console.log('Joined room - Temp ID:', tempId, 'Name:', myPlayerName)
     }, [myPlayerName, inputRoomCode, bindChannelEvents])
     // #endregion
 
     // #region HOST ASSIGNS SLOT
     useEffect(() => {
         if (!isHost || !mpChannel || gameMode !== 'multiplayer') return
-        const slots: Player['id'][] = ['player', 'p2', 'p3', 'p4']
-        let nextSlotIndex = 0
+        
+        const availableSlots: Player['id'][] = ['player', 'p2', 'p3', 'p4']
+        let assignedSlots: string[] = []
+        
+        const hostSlot = 'player'
+        assignedSlots.push(hostSlot)
+        
+        setMyPlayerId(hostSlot)
+        myPlayerIdRef.current = hostSlot
+        
+        console.log('Host assigned to slot:', hostSlot)
 
         const handlePlayerJoined = async (raw: unknown) => {
             const data = raw as JoinPayload
             if (!data.requestSlot) return
             
-            const availableSlot = slots[nextSlotIndex]
-            nextSlotIndex++
+            const nextSlot = availableSlots.find(slot => !assignedSlots.includes(slot))
             
-            if (!availableSlot) return
-
-            const newConnected = [...mpConnectedRef.current, { id: availableSlot, name: data.playerName }]
+            if (!nextSlot) {
+                console.log('No available slots for player:', data.playerName)
+                return
+            }
+            
+            assignedSlots.push(nextSlot)
+            
+            console.log(`Assigning player ${data.playerName} to slot:`, nextSlot)
+            
+            const newConnected = [...mpConnectedRef.current, { id: nextSlot, name: data.playerName }]
             setMpConnectedPlayers(newConnected)
             mpConnectedRef.current = newConnected
 
             await pusherTrigger(`uno-room-${roomCodeRef.current}`, 'slot-assigned', {
-                playerId:   availableSlot,
+                playerId:   nextSlot,
                 playerName: data.playerName,
                 allPlayers: newConnected,
             })
@@ -765,19 +791,22 @@ export default function UnoGame() {
         if (!isHost) return
         if (mpConnectedPlayers.length < 2) { setMpError('Need at least 2 players'); return }
 
+        const playerOrder: Player['id'][] = mpConnectedPlayers.map(p => p.id as Player['id'])
+        
+        console.log('Starting game with player order:', playerOrder)
+        
         const positions: Player['position'][] = ['bottom', 'top', 'left', 'right']
         
         const playerPositions: { [key: string]: Player['position'] } = {}
-        const playerOrder: Player['id'][] = mpConnectedPlayers.map(p => p.id as Player['id'])
         
         playerOrder.forEach((playerId, index) => {
             if (playerId === myPlayerIdRef.current) {
                 playerPositions[playerId] = 'bottom'
-            } else if (index === 0) {
+            } else if (index === 0 || (playerOrder[0] === myPlayerIdRef.current && index === 1)) {
                 playerPositions[playerId] = 'top'
-            } else if (index === 1) {
+            } else if (index === 1 || (playerOrder[0] === myPlayerIdRef.current && index === 2)) {
                 playerPositions[playerId] = 'left'
-            } else if (index === 2) {
+            } else {
                 playerPositions[playerId] = 'right'
             }
         })
@@ -802,7 +831,6 @@ export default function UnoGame() {
 
         const randomIndex = Math.floor(Math.random() * newDeck.length)
         const startCard = newDeck.splice(randomIndex, 1)[0]
-        
         const newPlayPile = [startCard]
         
         const firstPlayerIndex = Math.floor(Math.random() * playerOrder.length)
@@ -837,6 +865,7 @@ export default function UnoGame() {
         
         console.log('Game starting - Player order:', playerOrder)
         console.log('First player:', firstPlayer, 'My ID:', myPlayerIdRef.current)
+        console.log('Player positions:', playerPositions)
 
         setPlayers(newPlayers);             playersRef.current     = newPlayers
         setDeckState(newDeck);              deckRef.current        = newDeck
