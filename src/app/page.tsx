@@ -310,18 +310,23 @@ export default function UnoGame() {
         Math.floor(Math.random() * 500 + 1000), [])
     // #endregion
 
-    // #region BROADCAST ACTION
+    // #region BROADCAST ACTION - WITH ERROR HANDLING
     const broadcastAction = useCallback(async (action: string, payload: any) => {
         if (gameModeRef.current !== 'multiplayer') return
-        if (!gameOnRef.current) return
+        if (!gameOnRef.current && action !== 'ROUND_WINNER' && action !== 'GAME_WINNER') return
         
         const channel = `uno-room-${roomCodeRef.current}`
-        await pusherTrigger(channel, 'game-action', {
-            action,
-            payload,
-            timestamp: Date.now(),
-            playerId: myPlayerIdRef.current,
-        } as GameAction)
+        try {
+            await pusherTrigger(channel, 'game-action', {
+                action,
+                payload,
+                timestamp: Date.now(),
+                playerId: myPlayerIdRef.current,
+            } as GameAction)
+            console.log(`Broadcasted ${action}:`, payload)
+        } catch (error) {
+            console.error(`Failed to broadcast ${action}:`, error)
+        }
     }, [])
 
     // Apply game action to local state
@@ -447,27 +452,52 @@ export default function UnoGame() {
         
             case 'ROUND_WINNER': {
                 const { winnerId, winnerName, updatedPlayers } = payload
+                console.log('Round winner received:', winnerId, winnerName)
+                
                 setRoundWinner(winnerId === myPlayerIdRef.current ? 'You' : winnerName)
                 setRoundVisible(true)
                 setGameOn(false)
                 gameOnRef.current = false
 
-                if (updatedPlayers) {
-                    setPlayers(updatedPlayers)
-                    playersRef.current = updatedPlayers
+                if (updatedPlayers && Array.isArray(updatedPlayers)) {
+                    const updatedPlayersWithHands = playersRef.current.map(p => {
+                        const updatedInfo = updatedPlayers.find((up: any) => up.id === p.id)
+                        if (updatedInfo) {
+                            return { ...p, score: updatedInfo.score }
+                        }
+                        return p
+                    })
+                    setPlayers(updatedPlayersWithHands)
+                    playersRef.current = updatedPlayersWithHands
                 }
 
-                setTimeout(() => setRoundVisible(false), 3000)
+                setTimeout(() => {
+                    setRoundVisible(false)
+                }, 3000)
                 break
             }
         
             case 'GAME_WINNER': {
-                const { winnerId, winnerName } = payload
+                const { winnerId, winnerName, finalScores } = payload
+                console.log('Game winner received:', winnerId, winnerName)
+                
                 setGameWinner(winnerId === myPlayerIdRef.current ? 'You' : winnerName)
                 setGameVisible(true)
                 setGameOn(false)
                 gameOnRef.current = false
                 audioManager.play(winnerId === myPlayerIdRef.current ? 'winGame' : 'lose')
+                
+                if (finalScores && Array.isArray(finalScores)) {
+                    const updatedPlayersWithFinalScores = playersRef.current.map(p => {
+                        const finalInfo = finalScores.find((fs: any) => fs.id === p.id)
+                        if (finalInfo) {
+                            return { ...p, score: finalInfo.score }
+                        }
+                        return p
+                    })
+                    setPlayers(updatedPlayersWithFinalScores)
+                    playersRef.current = updatedPlayersWithFinalScores
+                }
                 break
             }
         
@@ -487,7 +517,7 @@ export default function UnoGame() {
     }, [triggerUno])
     // #endregion
 
-    // #region INITIALIZE GAME FROM START - WITH DEBUG LOGS
+    // #region INITIALIZE GAME FROM START
     const initializeGameFromStart = useCallback(async (payload: any) => {
         console.log('=== INITIALIZE GAME FROM START ===')
         console.log('Received payload:', payload)
@@ -497,29 +527,24 @@ export default function UnoGame() {
         setPlayerOrderState(playerOrder)
         playerOrderRef.current = playerOrder
         
-        // Calculate positions based on where THIS client is in the player order
         const myIndex = playerOrder.findIndex((id: Player['id']) => id === myPlayerIdRef.current)
         const playerCount = playerOrder.length
         
         console.log(`Player count: ${playerCount}, My index: ${myIndex}, My ID: ${myPlayerIdRef.current}`)
         console.log('Player order:', playerOrder)
         
-        // Create position mapping for all players based on current client's perspective
         const playerPositions: { [key: string]: Player['position'] } = {}
         
         if (playerCount === 2) {
-            // 2 players: bottom (me) and top (opponent)
             playerPositions[playerOrder[myIndex]] = 'bottom'
             playerPositions[playerOrder[(myIndex + 1) % playerCount]] = 'top'
             console.log('2-player mode: Bottom and Top positions')
         } else if (playerCount === 3) {
-            // 3 players: bottom (me), left, right (no top position)
             playerPositions[playerOrder[myIndex]] = 'bottom'
             playerPositions[playerOrder[(myIndex + 1) % playerCount]] = 'left'
             playerPositions[playerOrder[(myIndex + 2) % playerCount]] = 'right'
             console.log('3-player mode: Bottom, Left, and Right positions')
         } else if (playerCount === 4) {
-            // 4 players: bottom (me), left, top, right (clockwise)
             playerPositions[playerOrder[myIndex]] = 'bottom'
             playerPositions[playerOrder[(myIndex + 1) % playerCount]] = 'left'
             playerPositions[playerOrder[(myIndex + 2) % playerCount]] = 'top'
@@ -528,11 +553,6 @@ export default function UnoGame() {
         }
         
         console.log('Player positions calculated:', playerPositions)
-        
-        // Log each player's assigned position
-        Object.entries(playerPositions).forEach(([playerId, position]) => {
-            console.log(`Player ${playerId} assigned to position: ${position}`)
-        })
         
         let newDeck = createDeck()
         newDeck = shuffleDeck(newDeck)
@@ -619,7 +639,6 @@ export default function UnoGame() {
         colorPickerRef.current = false
         setMpState('playing')
         
-        // Set data attribute for CSS
         if (typeof document !== 'undefined') {
             document.body.setAttribute('data-player-count', playerCount.toString())
             console.log(`Set body data-player-count to: ${playerCount}`)
@@ -639,7 +658,7 @@ export default function UnoGame() {
     }, [])
     // #endregion
 
-    // #region CHECK WINNER
+    // #region CHECK WINNER - FIXED FOR MULTIPLAYER
     const checkForWinner = useCallback(async (currentPlayers?: Player[]) => {
         const cp = currentPlayers ?? playersRef.current
         const winner = cp.find(p => p.hand.length === 0)
@@ -668,6 +687,11 @@ export default function UnoGame() {
                 await broadcastAction('GAME_WINNER', {
                     winnerId: gameWinnerPlayer.id,
                     winnerName: gameWinnerPlayer.name,
+                    finalScores: updatedPlayers.map(p => ({
+                        id: p.id,
+                        name: p.name,
+                        score: p.score
+                    }))
                 })
             }
         } else {
@@ -1857,13 +1881,10 @@ export default function UnoGame() {
                 {gameMode === 'ai' ? '🤖 vs AI' : `🌐 ${roomCode}`}
             </div>
 
-            {/* Other Players - positioned based on their position property */}
             {otherPlayers.map(op => {
                 const isMyTurn = currentTurn === op.id
                 const isVertical = op.position === 'left' || op.position === 'right'
                 
-                console.log(`Rendering player: ${op.name}, Position: ${op.position}, Class: ${getPositionClass(op.position)}`)
-
                 return (
                     <div key={op.id} className={`cpu-player ${getPositionClass(op.position)}`}>
                         <div className="cpu-info" style={{
