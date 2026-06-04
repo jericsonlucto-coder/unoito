@@ -1,4 +1,4 @@
-/* globals.css - Complete CSS for 4-Player Uno Game */
+/* globals.css - Complete CSS for 2-4 Player Uno Game */
 
 *,
 *::after,
@@ -32,7 +32,7 @@ body {
     background: linear-gradient(135deg, #1a472a 0%, #0d2818 100%);
 }
 
-/* CPU Players Positioning */
+/* CPU Players Positioning - Dynamic based on player count */
 .cpu-player {
     position: fixed;
     display: flex;
@@ -44,24 +44,46 @@ body {
     padding: 1rem;
     border-radius: 2rem;
     backdrop-filter: blur(5px);
+    transition: all 0.3s ease;
 }
 
+/* Top position */
 .cpu-top {
     top: 20px;
     left: 50%;
     transform: translateX(-50%);
 }
 
+/* Left position */
 .cpu-left {
     left: 20px;
     top: 50%;
     transform: translateY(-50%);
 }
 
+/* Right position */
 .cpu-right {
     right: 20px;
     top: 50%;
     transform: translateY(-50%);
+}
+
+/* For 2 players only - both at top and bottom */
+@media (min-width: 969px) {
+    body[data-player-count="2"] .cpu-left,
+    body[data-player-count="2"] .cpu-right {
+        display: flex;
+    }
+    
+    body[data-player-count="2"] .cpu-left {
+        left: 50%;
+        top: 20px;
+        transform: translateX(-50%);
+    }
+    
+    body[data-player-count="2"] .cpu-right {
+        display: none;
+    }
 }
 
 .cpu-info, .player-info {
@@ -86,7 +108,7 @@ body {
     margin-top: 0.3rem;
 }
 
-/* CPU Horizontal Hand (Top) */
+/* CPU Horizontal Hand (Top position) */
 .cpu-hand {
     display: flex;
     justify-content: center;
@@ -99,7 +121,7 @@ body {
     max-width: 80vw;
 }
 
-/* CPU Vertical Hand (Left & Right) */
+/* CPU Vertical Hand (Left & Right positions) */
 .cpu-hand-vertical {
     display: flex;
     flex-direction: column;
@@ -127,6 +149,7 @@ body {
     border-radius: 5px;
 }
 
+/* Card sizes for different positions */
 .cpu-card {
     width: 70px;
     height: auto;
@@ -155,6 +178,8 @@ body {
     margin: 0 auto;
     width: 100%;
     max-width: 1200px;
+    position: relative;
+    padding: 2rem;
 }
 
 /* Turn Indicator */
@@ -307,7 +332,7 @@ body {
     font-size: 1.2rem;
 }
 
-/* Player Bottom */
+/* Player Bottom - Always at bottom */
 .player-bottom {
     position: fixed;
     bottom: 20px;
@@ -322,6 +347,8 @@ body {
     padding: 1rem;
     border-radius: 2rem;
     backdrop-filter: blur(5px);
+    width: auto;
+    max-width: 95vw;
 }
 
 .player-hand {
@@ -587,7 +614,7 @@ body {
     color: #333;
 }
 
-/* Responsive Design */
+/* Responsive Design - Tablet */
 @media (max-width: 1200px) {
     .cpu-left, .cpu-right {
         transform: translateY(-50%) scale(0.9);
@@ -600,15 +627,36 @@ body {
     .cpu-right {
         right: 5px;
     }
+    
+    .cpu-card {
+        width: 60px;
+    }
+    
+    .cpu-card-vertical {
+        width: 80px;
+    }
+    
+    .player-card {
+        width: 70px;
+    }
 }
 
+/* Responsive Design - Mobile/Tablet (when screen is too small for side players) */
 @media (max-width: 968px) {
     html {
         font-size: 55%;
     }
     
+    /* Hide side players on smaller screens, show them at top */
     .cpu-left, .cpu-right {
-        display: none;
+        position: relative;
+        left: auto;
+        right: auto;
+        top: auto;
+        transform: none;
+        margin: 1rem auto;
+        display: flex;
+        flex-direction: column;
     }
     
     .cpu-top {
@@ -616,7 +664,19 @@ body {
         top: 0;
         left: 0;
         transform: none;
-        margin-bottom: 2rem;
+        margin-bottom: 1rem;
+    }
+    
+    /* Make all CPU hands horizontal on mobile */
+    .cpu-hand-vertical {
+        flex-direction: row;
+        max-height: none;
+        overflow-x: auto;
+        max-width: 90vw;
+    }
+    
+    .cpu-card-vertical {
+        width: 60px;
     }
     
     .player-bottom {
@@ -629,10 +689,12 @@ body {
     
     .game-container {
         padding: 1rem;
+        padding-bottom: 2rem;
     }
     
     .center-area {
-        margin: 1rem auto;
+        margin: 0 auto;
+        padding: 1rem;
     }
     
     .cpu-hand {
@@ -649,20 +711,33 @@ body {
     
     .scores {
         gap: 1rem;
+        flex-wrap: wrap;
     }
     
     .score-card {
         min-width: 90px;
         padding: 0.5rem 1rem;
     }
+    
+    /* Reorder players on mobile */
+    .cpu-players-container {
+        display: flex;
+        flex-direction: column;
+        order: -1;
+    }
 }
 
+/* Responsive Design - Mobile Small */
 @media (max-width: 768px) {
     html {
         font-size: 50%;
     }
     
     .cpu-card {
+        width: 50px;
+    }
+    
+    .cpu-card-vertical {
         width: 50px;
     }
     
@@ -712,8 +787,13 @@ body {
     }
 }
 
+/* Responsive Design - Mobile Extra Small */
 @media (max-width: 480px) {
     .cpu-card {
+        width: 40px;
+    }
+    
+    .cpu-card-vertical {
         width: 40px;
     }
     
@@ -755,10 +835,19 @@ body {
     .last-played-card {
         font-size: 1rem;
     }
+    
+    .cpu-info, .player-info {
+        padding: 0.5rem 1rem;
+    }
+    
+    .cpu-name, .player-name {
+        font-size: 1rem;
+    }
 }
 
 /* Landscape mode adjustments */
 @media (max-height: 600px) and (orientation: landscape) {
+    /* Adjust for landscape on mobile */
     .cpu-left, .cpu-right {
         display: none;
     }
@@ -767,19 +856,26 @@ body {
         position: relative;
         top: 0;
         transform: none;
-        margin-bottom: 1rem;
+        margin-bottom: 0.5rem;
     }
     
     .player-bottom {
         position: relative;
         bottom: 0;
         transform: none;
-        margin-top: 1rem;
+        margin-top: 0.5rem;
     }
     
     .cpu-hand {
-        max-height: 80px;
+        max-height: 70px;
         overflow-y: auto;
+        gap: 0.5rem;
+    }
+    
+    .cpu-hand-vertical {
+        flex-direction: row;
+        max-height: 70px;
+        overflow-x: auto;
     }
     
     .player-hand {
@@ -788,11 +884,33 @@ body {
     }
     
     .center-area {
-        gap: 1rem;
+        gap: 0.5rem;
     }
     
     .table-cards {
         margin: 0.5rem 0;
+    }
+    
+    .turn-indicator {
+        padding: 0.5rem 1rem;
+    }
+    
+    .turn-text {
+        font-size: 1.2rem;
+    }
+    
+    .cpu-card, .cpu-card-vertical {
+        width: 45px;
+    }
+    
+    .player-card {
+        width: 55px;
+    }
+    
+    .play-pile img, 
+    .draw-pile img {
+        width: 60px;
+        height: auto;
     }
 }
 
@@ -844,4 +962,61 @@ body {
 
 .player-card.active {
     animation: activeGlow 1s ease-in-out infinite;
+}
+
+/* Container for all CPU players to help with mobile layout */
+.cpu-players-wrapper {
+    position: relative;
+    width: 100%;
+    min-height: 200px;
+}
+
+/* Ensure proper spacing for different player counts on desktop */
+@media (min-width: 969px) {
+    /* For 4 players - all positions visible */
+    body[data-player-count="4"] .cpu-left,
+    body[data-player-count="4"] .cpu-right {
+        display: flex;
+    }
+    
+    /* For 3 players - left and top visible, right hidden */
+    body[data-player-count="3"] .cpu-left {
+        display: flex;
+    }
+    
+    body[data-player-count="3"] .cpu-right {
+        display: none;
+    }
+    
+    /* For 2 players - only top visible */
+    body[data-player-count="2"] .cpu-left,
+    body[data-player-count="2"] .cpu-right {
+        display: none;
+    }
+}
+
+/* Animation for card deals */
+@keyframes dealCard {
+    0% {
+        transform: translateY(-100vh) rotate(180deg);
+        opacity: 0;
+    }
+    100% {
+        transform: translateY(0) rotate(0);
+        opacity: 1;
+    }
+}
+
+.deal-animation {
+    animation: dealCard 0.3s ease-out;
+}
+
+/* Wild card rainbow effect */
+@keyframes rainbow {
+    0% { filter: hue-rotate(0deg); }
+    100% { filter: hue-rotate(360deg); }
+}
+
+.wild-card-active {
+    animation: rainbow 2s linear infinite;
 }
