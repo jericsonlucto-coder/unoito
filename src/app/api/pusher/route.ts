@@ -5,6 +5,12 @@ const PUSHER_KEY = '4de6e91a5e72dd9096db'
 const PUSHER_SECRET = 'b9c26ec9196d0338ba7a'
 const PUSHER_CLUSTER = 'ap1'
 
+interface PusherRequest {
+    channel: string;
+    event: string;
+    data: any;
+}
+
 async function hmacSHA256(secret: string, message: string): Promise<string> {
     const encoder = new TextEncoder()
     const keyData = encoder.encode(secret)
@@ -43,7 +49,8 @@ async function computeMd5(message: string): Promise<string> {
 
 export async function POST(req: NextRequest) {
     try {
-        const { channel, event, data } = await req.json()
+        const body = await req.json() as PusherRequest
+        const { channel, event, data } = body
 
         if (!channel || !event || data === undefined) {
             return NextResponse.json(
@@ -52,10 +59,10 @@ export async function POST(req: NextRequest) {
             )
         }
 
-        const body = JSON.stringify(data)
+        const bodyString = JSON.stringify(data)
         const timestamp = Math.floor(Date.now() / 1000).toString()
         const path = `/apps/${PUSHER_APP_ID}/events`
-        const bodyMd5 = await computeMd5(body)
+        const bodyMd5 = await computeMd5(bodyString)
 
         const paramString = [
             `auth_key=${PUSHER_KEY}`,
@@ -84,7 +91,7 @@ export async function POST(req: NextRequest) {
         const pusherRes = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body,
+            body: bodyString,
         })
 
         const resText = await pusherRes.text()
