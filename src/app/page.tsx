@@ -337,17 +337,14 @@ export default function UnoGame() {
             case 'PLAY_CARD': {
                 const { card, newHand, newPlayPile, newDirection, nextTurn, colorChosen, drawAmount, drawnCards, drawTargetPlayer } = payload
 
-                // Update play pile
                 const updatedPlayPile = [...playPileRef.current, card]
                 setPlayPile(updatedPlayPile)
                 playPileRef.current = updatedPlayPile
 
-                // Update player's hand
                 let updatedPlayers = playersRef.current.map(p =>
                     p.id === playerId ? { ...p, hand: newHand } : p
                 )
                 
-                // Handle draw penalty for other players
                 if (drawAmount && drawAmount > 0 && drawTargetPlayer) {
                     console.log(`Applying draw ${drawAmount} to player:`, drawTargetPlayer)
                     const drawPlayer = updatedPlayers.find(p => p.id === drawTargetPlayer)
@@ -366,25 +363,21 @@ export default function UnoGame() {
                 setPlayers(updatedPlayers)
                 playersRef.current = updatedPlayers
                 
-                // Update play pile (might have been modified by draw card reshuffling)
                 if (newPlayPile) {
                     setPlayPile(newPlayPile)
                     playPileRef.current = newPlayPile
                 }
 
-                // Update direction if changed
                 if (newDirection && newDirection !== directionRef.current) {
                     setDirection(newDirection)
                     directionRef.current = newDirection
                 }
 
-                // Update turn
                 if (nextTurn) {
                     setCurrentTurn(nextTurn)
                     currentTurnRef.current = nextTurn
                 }
 
-                // Handle color picker for wild cards
                 if (colorChosen) {
                     setColorPickerOpen(true)
                     colorPickerRef.current = true
@@ -393,7 +386,6 @@ export default function UnoGame() {
                     selectedWildColorRef.current = colorChosen
                 }
 
-                // Check for UNO
                 if (newHand.length === 1) {
                     triggerUno(playerId)
                 }
@@ -821,19 +813,42 @@ export default function UnoGame() {
         if (mpConnectedPlayers.length < 2) { setMpError('Need at least 2 players'); return }
 
         const playerOrder: Player['id'][] = mpConnectedPlayers.map(p => p.id as Player['id'])
+        const playerCount = playerOrder.length
         
-        console.log('Starting game with player order:', playerOrder)
+        console.log('Starting game with player order:', playerOrder, 'Count:', playerCount)
         
-        // Create player positions - always put current player at bottom, others at top
+        // Assign positions based on number of players
         const playerPositions: { [key: string]: Player['position'] } = {}
         
-        playerOrder.forEach((playerId) => {
-            if (playerId === myPlayerIdRef.current) {
-                playerPositions[playerId] = 'bottom'
-            } else {
-                playerPositions[playerId] = 'top'
-            }
+        // Find the index of the current player
+        const myIndex = playerOrder.findIndex(id => id === myPlayerIdRef.current)
+        
+        // Assign positions in clockwise order starting from current player at bottom
+        const positionOrder: Player['position'][] = []
+        
+        if (playerCount === 2) {
+            // 2 players: bottom and top
+            positionOrder[myIndex] = 'bottom'
+            positionOrder[(myIndex + 1) % playerCount] = 'top'
+        } else if (playerCount === 3) {
+            // 3 players: bottom, top, left/right
+            positionOrder[myIndex] = 'bottom'
+            positionOrder[(myIndex + 1) % playerCount] = 'top'
+            positionOrder[(myIndex + 2) % playerCount] = 'left'
+        } else if (playerCount === 4) {
+            // 4 players: bottom, left, top, right (clockwise)
+            positionOrder[myIndex] = 'bottom'
+            positionOrder[(myIndex + 1) % playerCount] = 'left'
+            positionOrder[(myIndex + 2) % playerCount] = 'top'
+            positionOrder[(myIndex + 3) % playerCount] = 'right'
+        }
+        
+        // Assign positions to players
+        playerOrder.forEach((playerId, index) => {
+            playerPositions[playerId] = positionOrder[index]
         })
+        
+        console.log('Player positions:', playerPositions)
 
         const newPlayers: Player[] = mpConnectedPlayers.map((cp) => ({
             id: cp.id as Player['id'],
@@ -875,7 +890,6 @@ export default function UnoGame() {
                     }
                 }
             }
-            // Don't skip the player who drew - they still get their turn
             firstPlayer = drawPlayerId
         } else if (startCard.value === 14) {
             drawAmount = 4
@@ -893,7 +907,6 @@ export default function UnoGame() {
             const colors = ['rgb(255, 6, 0)', 'rgb(0, 170, 69)', 'rgb(0, 150, 224)', 'rgb(255, 222, 0)']
             const randomColor = colors[Math.floor(Math.random() * colors.length)]
             startCard.color = randomColor
-            // Don't skip the player who drew - they still get their turn
             firstPlayer = drawPlayerId
         } else if (startCard.value === 10) {
             firstPlayer = playerOrder[firstPlayerIndex]
@@ -905,9 +918,8 @@ export default function UnoGame() {
             startCard.color = randomColor
         }
         
-        console.log('Game starting - Player order:', playerOrder)
-        console.log('First player:', firstPlayer, 'My ID:', myPlayerIdRef.current)
-        console.log('Player positions:', playerPositions)
+        console.log('Game starting - First player:', firstPlayer)
+        console.log('Player positions assigned:', playerPositions)
 
         setPlayers(newPlayers);             playersRef.current     = newPlayers
         setDeckState(newDeck);              deckRef.current        = newDeck
@@ -1126,7 +1138,6 @@ export default function UnoGame() {
             setDeckState(updDeck);          deckRef.current     = updDeck
             setPlayPile(updPile);           playPileRef.current = updPile
             
-            // The player who drew cards still gets their turn
             const nextTurn = nextId
             setCurrentTurn(nextTurn)
             currentTurnRef.current = nextTurn
@@ -1191,7 +1202,6 @@ export default function UnoGame() {
         let updatedPlayers = playersRef.current.map(p =>
             p.id === myPlayerIdRef.current ? { ...p, hand: newPlayerHand } : p)
         
-        // Handle draw penalty
         let nextTurn: Player['id'] | null = null
         let drawAmount = 0
         let drawnCards: CardType[] = []
@@ -1201,7 +1211,6 @@ export default function UnoGame() {
             audioManager.play('plusCard')
             drawAmount = playedCard.drawValue
             
-            // Determine who draws cards (next player)
             drawTargetPlayer = getNextTurn(myPlayerIdRef.current, newDir, order)
             const nextPlayer = updatedPlayers.find(p => p.id === drawTargetPlayer)
             
@@ -1226,14 +1235,12 @@ export default function UnoGame() {
                     }
                 }
                 
-                // Update deck and play pile
                 setDeckState(updDeck)
                 deckRef.current = updDeck
                 setPlayPile(updPile)
                 playPileRef.current = updPile
             }
             
-            // The player who drew cards still gets their turn (not skipped)
             nextTurn = drawTargetPlayer
         }
         
@@ -1260,7 +1267,6 @@ export default function UnoGame() {
             return
         }
 
-        // Handle wild card color picker
         if (playedCard.color === 'any' && playedCard.drawValue === 0) {
             setColorPickerOpen(true)
             colorPickerRef.current = true
@@ -1281,9 +1287,8 @@ export default function UnoGame() {
             return
         }
 
-        // If no nextTurn was set (no draw card), calculate normally
         if (!nextTurn) {
-            if (playedCard.value === 11) { // Skip card
+            if (playedCard.value === 11) {
                 nextTurn = getNextTurn(getNextTurn(myPlayerIdRef.current, newDir, order), newDir, order)
             } else {
                 nextTurn = getNextTurn(myPlayerIdRef.current, newDir, order)
@@ -1474,8 +1479,8 @@ export default function UnoGame() {
     }
 
     const getPositionClass = (pos: Player['position']) => {
-        if (pos === 'top')   return 'cpu-top'
-        if (pos === 'left')  return 'cpu-left'
+        if (pos === 'top') return 'cpu-top'
+        if (pos === 'left') return 'cpu-left'
         if (pos === 'right') return 'cpu-right'
         return ''
     }
@@ -1829,9 +1834,10 @@ export default function UnoGame() {
                 {gameMode === 'ai' ? '🤖 vs AI' : `🌐 ${roomCode}`}
             </div>
 
-            {/* Other Players - positioned at top */}
+            {/* Other Players - positioned based on their position property */}
             {otherPlayers.map(op => {
                 const isMyTurn = currentTurn === op.id
+                const isVertical = op.position === 'left' || op.position === 'right'
 
                 return (
                     <div key={op.id} className={`cpu-player ${getPositionClass(op.position)}`}>
@@ -1853,21 +1859,26 @@ export default function UnoGame() {
                             </div>
                         </div>
 
-                        <div className="cpu-hand">
+                        <div className={isVertical ? 'cpu-hand-vertical' : 'cpu-hand'}>
                             {op.hand.map((_, i) => (
                                 <Image
                                     key={i}
                                     src={'/images/back.png'}
                                     alt="card back"
-                                    width={60}
-                                    height={90}
-                                    className="cpu-card"
+                                    width={isVertical ? 90 : 60}
+                                    height={isVertical ? 60 : 90}
+                                    className={isVertical ? 'cpu-card-vertical' : 'cpu-card'}
                                 />
                             ))}
                         </div>
 
                         {showUno[op.id] && (
-                            <div className="cpu-animation-top">
+                            <div className={
+                                op.position === 'top' ? 'cpu-animation-top' :
+                                op.position === 'left' ? 'cpu-animation-left' :
+                                op.position === 'right' ? 'cpu-animation-right' :
+                                'cpu-animation-top'
+                            }>
                                 <Image src="/images/uno!.png" alt="UNO!" width={80} height={40} />
                             </div>
                         )}
