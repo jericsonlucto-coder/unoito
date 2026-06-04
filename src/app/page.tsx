@@ -335,31 +335,31 @@ export default function UnoGame() {
         switch(action) {
             case 'PLAY_CARD': {
                 const { card, newHand, newPlayPile, newDirection, nextTurn, colorChosen } = payload
-        
+
                 // Update play pile
                 const updatedPlayPile = [...playPileRef.current, card]
                 setPlayPile(updatedPlayPile)
                 playPileRef.current = updatedPlayPile
-        
+
                 // Update player's hand
                 const updatedPlayers = playersRef.current.map(p =>
                     p.id === playerId ? { ...p, hand: newHand } : p
                 )
                 setPlayers(updatedPlayers)
                 playersRef.current = updatedPlayers
-        
+
                 // Update direction if changed
                 if (newDirection && newDirection !== directionRef.current) {
                     setDirection(newDirection)
                     directionRef.current = newDirection
                 }
-        
+
                 // Update turn
                 if (nextTurn) {
                     setCurrentTurn(nextTurn)
                     currentTurnRef.current = nextTurn
                 }
-        
+
                 // Handle color picker for wild cards
                 if (colorChosen) {
                     setColorPickerOpen(true)
@@ -368,7 +368,7 @@ export default function UnoGame() {
                     setSelectedWildColor(colorChosen)
                     selectedWildColorRef.current = colorChosen
                 }
-        
+
                 // Check for UNO
                 if (newHand.length === 1) {
                     triggerUno(playerId)
@@ -378,14 +378,14 @@ export default function UnoGame() {
         
             case 'DRAW_CARD': {
                 const { newHand, newDeck, newPlayPile, nextTurn } = payload
-        
+
                 // Update player's hand
                 const updatedPlayers = playersRef.current.map(p =>
                     p.id === playerId ? { ...p, hand: newHand } : p
                 )
                 setPlayers(updatedPlayers)
                 playersRef.current = updatedPlayers
-        
+
                 // Update deck and play pile
                 if (newDeck) {
                     setDeckState(newDeck)
@@ -395,13 +395,13 @@ export default function UnoGame() {
                     setPlayPile(newPlayPile)
                     playPileRef.current = newPlayPile
                 }
-        
+
                 // Update turn if specified
                 if (nextTurn) {
                     setCurrentTurn(nextTurn)
                     currentTurnRef.current = nextTurn
                 }
-        
+
                 // Play card sound
                 audioManager.play('drawCard')
                 break
@@ -409,19 +409,19 @@ export default function UnoGame() {
         
             case 'COLOR_CHOSEN': {
                 const { color, newPlayPile, nextTurn } = payload
-        
+
                 // Update play pile with new color
                 const updatedPile = [...playPileRef.current]
                 updatedPile[updatedPile.length - 1] = { ...updatedPile[updatedPile.length - 1], color }
                 setPlayPile(updatedPile)
                 playPileRef.current = updatedPile
-        
+
                 setColorPickerOpen(false)
                 colorPickerRef.current = false
                 setWildCardColor(color)
                 setSelectedWildColor(color)
                 selectedWildColorRef.current = color
-        
+
                 if (nextTurn) {
                     setCurrentTurn(nextTurn)
                     currentTurnRef.current = nextTurn
@@ -440,13 +440,13 @@ export default function UnoGame() {
                 setRoundVisible(true)
                 setGameOn(false)
                 gameOnRef.current = false
-        
+
                 // Update scores
                 if (updatedPlayers) {
                     setPlayers(updatedPlayers)
                     playersRef.current = updatedPlayers
                 }
-        
+
                 setTimeout(() => setRoundVisible(false), 3000)
                 break
             }
@@ -477,10 +477,10 @@ export default function UnoGame() {
     }, [triggerUno])
     // #endregion
 
-    // #region INITIALIZE GAME FROM START (for non-host players)
+    // #region INITIALIZE GAME FROM START
     const initializeGameFromStart = useCallback(async (payload: any) => {
         console.log('Initializing game from start:', payload)
-        const { playerOrder, startCard, players: playerInfo } = payload
+        const { playerOrder, startCard, players: playerInfo, firstTurn, direction: startDirection, drawAmount } = payload
         
         // Set up player order
         setPlayerOrderState(playerOrder)
@@ -524,17 +524,50 @@ export default function UnoGame() {
         
         const newPlayPile = startCardObj ? [startCardObj] : []
         
+        // Handle draw penalty if start card is a draw card
+        let nextTurn = firstTurn
+        let currentDeck = [...newDeck]
+        let currentPlayPile = [...newPlayPile]
+        let currentPlayers = [...initializedPlayers]
+        
+        if (drawAmount && drawAmount > 0) {
+            console.log(`Start card is a draw ${drawAmount} card! Applying penalty to next player`)
+            const nextPlayerIndex = playerOrder.indexOf(firstTurn)
+            const drawPlayerId = playerOrder[(nextPlayerIndex + 1) % playerOrder.length]
+            const drawPlayer = currentPlayers.find(p => p.id === drawPlayerId)
+            
+            if (drawPlayer) {
+                for (let i = 0; i < drawAmount; i++) {
+                    if (currentDeck.length > 0) {
+                        drawPlayer.hand.push(currentDeck.shift()!)
+                    } else if (currentPlayPile.length > 1) {
+                        const toShuffle = currentPlayPile.slice(0, -1)
+                        currentDeck = shuffleDeck(toShuffle)
+                        currentPlayPile = [currentPlayPile[currentPlayPile.length - 1]]
+                        drawPlayer.hand.push(currentDeck.shift()!)
+                    }
+                }
+                audioManager.play('plusCard')
+                // Skip the player who drew cards
+                nextTurn = playerOrder[(nextPlayerIndex + 2) % playerOrder.length]
+            }
+        }
+        
+        // Determine if it's this player's turn
+        const isMyTurn = nextTurn === myPlayerIdRef.current
+        console.log('My player ID:', myPlayerIdRef.current, 'First turn:', nextTurn, 'Is my turn:', isMyTurn)
+        
         // Update all state
-        setPlayers(initializedPlayers)
-        playersRef.current = initializedPlayers
-        setDeckState(newDeck)
-        deckRef.current = newDeck
-        setPlayPile(newPlayPile)
-        playPileRef.current = newPlayPile
-        setCurrentTurn('player')
-        currentTurnRef.current = 'player'
-        setDirection('clockwise')
-        directionRef.current = 'clockwise'
+        setPlayers(currentPlayers)
+        playersRef.current = currentPlayers
+        setDeckState(currentDeck)
+        deckRef.current = currentDeck
+        setPlayPile(currentPlayPile)
+        playPileRef.current = currentPlayPile
+        setCurrentTurn(nextTurn)
+        currentTurnRef.current = nextTurn
+        setDirection(startDirection || 'clockwise')
+        directionRef.current = startDirection || 'clockwise'
         setGameOn(true)
         gameOnRef.current = true
         setColorPickerOpen(false)
@@ -542,7 +575,20 @@ export default function UnoGame() {
         setMpState('playing')
         
         audioManager.play('shuffle')
+        
+        // Show notification if it's this player's turn
+        if (isMyTurn) {
+            setTimeout(() => {
+                const msg = drawAmount ? `Start card is Draw ${drawAmount}! Opponent draws ${drawAmount} cards. It's your turn! 🎮` : "It's your turn! 🎮"
+                alert(msg)
+            }, 500)
+        } else if (drawAmount) {
+            setTimeout(() => {
+                alert(`Start card is Draw ${drawAmount}! You draw ${drawAmount} cards.`)
+            }, 500)
+        }
     }, [])
+    // #endregion
 
     // #region CHECK WINNER
     const checkForWinner = useCallback(async (currentPlayers?: Player[]) => {
@@ -603,14 +649,13 @@ export default function UnoGame() {
     }, [tallyPoints, broadcastAction])
     // #endregion
 
-    // #region BIND CHANNEL EVENTS (Updated with game-started)
+    // #region BIND CHANNEL EVENTS
     const bindChannelEvents = useCallback((channel: PusherChannel) => {
         channel.bind('game-action', (raw: unknown) => {
             const gameAction = raw as GameAction
             applyGameAction(gameAction)
         })
 
-        // Handle game-started event
         channel.bind('game-started', (raw: unknown) => {
             const payload = raw as any
             console.log('Received game-started event:', payload)
@@ -724,7 +769,7 @@ export default function UnoGame() {
     }, [isHost, mpChannel, gameMode])
     // #endregion
 
-    // #region START MULTIPLAYER GAME (Updated)
+    // #region START MULTIPLAYER GAME
     const startMultiplayerGame = useCallback(async () => {
         if (!isHost) return
         if (mpConnectedPlayers.length < 2) { setMpError('Need at least 2 players'); return }
@@ -752,44 +797,102 @@ export default function UnoGame() {
             }
         }
 
-        let startCard: CardType | null = null
-        for (let i = 0; i < newDeck.length; i++) {
-            if (newDeck[i].color !== 'any' && newDeck[i].value <= 9) {
-                startCard = newDeck.splice(i, 1)[0]
-                break
+        // Randomly select a start card (can be any card from the deck)
+        const randomIndex = Math.floor(Math.random() * newDeck.length)
+        const startCard = newDeck.splice(randomIndex, 1)[0]
+        
+        const newPlayPile = [startCard]
+        
+        // Determine who goes first (random player)
+        const firstPlayerIndex = Math.floor(Math.random() * order.length)
+        let firstPlayer = order[firstPlayerIndex]
+        let drawAmount = 0
+        
+        // Handle special cards as start cards
+        if (startCard.value === 12) { // Draw 2
+            drawAmount = 2
+            audioManager.play('plusCard')
+            // Next player draws 2 cards and turn passes to the player after
+            const nextPlayerIndex = (firstPlayerIndex + 1) % order.length
+            const drawPlayer = newPlayers.find(p => p.id === order[nextPlayerIndex])
+            if (drawPlayer) {
+                for (let i = 0; i < 2; i++) {
+                    if (newDeck.length > 0) {
+                        drawPlayer.hand.push(newDeck.shift()!)
+                    }
+                }
             }
+            // Skip the player who drew cards
+            firstPlayer = order[(firstPlayerIndex + 2) % order.length]
+        } else if (startCard.value === 14) { // Wild Draw 4
+            drawAmount = 4
+            audioManager.play('plusCard')
+            // Next player draws 4 cards and turn passes to the player after
+            const nextPlayerIndex = (firstPlayerIndex + 1) % order.length
+            const drawPlayer = newPlayers.find(p => p.id === order[nextPlayerIndex])
+            if (drawPlayer) {
+                for (let i = 0; i < 4; i++) {
+                    if (newDeck.length > 0) {
+                        drawPlayer.hand.push(newDeck.shift()!)
+                    }
+                }
+            }
+            // Skip the player who drew cards
+            firstPlayer = order[(firstPlayerIndex + 2) % order.length]
+            // For wild draw 4, the player who plays it chooses color
+            // Since it's the start card, we need to randomly choose a color
+            const colors = ['rgb(255, 6, 0)', 'rgb(0, 170, 69)', 'rgb(0, 150, 224)', 'rgb(255, 222, 0)']
+            const randomColor = colors[Math.floor(Math.random() * colors.length)]
+            startCard.color = randomColor
+        } else if (startCard.value === 10) { // Reverse
+            // Reverse the direction
+            const newDirection = 'counter-clockwise'
+            setDirection(newDirection)
+            directionRef.current = newDirection
+            // First player is still the same but direction is reversed
+        } else if (startCard.value === 11) { // Skip
+            // Skip the first player, go to next
+            firstPlayer = order[(firstPlayerIndex + 1) % order.length]
+        } else if (startCard.color === 'any' && startCard.value === 13) { // Wild
+            const colors = ['rgb(255, 6, 0)', 'rgb(0, 170, 69)', 'rgb(0, 150, 224)', 'rgb(255, 222, 0)']
+            const randomColor = colors[Math.floor(Math.random() * colors.length)]
+            startCard.color = randomColor
         }
-        const newPlayPile = startCard ? [startCard] : []
+        
+        console.log('Game starting - first player:', firstPlayer, 'Start card:', startCard.value, 'Draw amount:', drawAmount)
 
         // Update host state
         setPlayers(newPlayers);             playersRef.current     = newPlayers
         setDeckState(newDeck);              deckRef.current        = newDeck
         setPlayPile(newPlayPile);           playPileRef.current    = newPlayPile
-        setCurrentTurn('player');           currentTurnRef.current = 'player'
+        setCurrentTurn(firstPlayer);        currentTurnRef.current = firstPlayer
         setDirection('clockwise');          directionRef.current   = 'clockwise'
         setPlayerOrderState(order);         playerOrderRef.current = order
         setGameOn(true);                    gameOnRef.current      = true
         setColorPickerOpen(false);          colorPickerRef.current = false
-        setMpState('playing')  // Host transitions to playing
+        setMpState('playing')
 
         audioManager.play('shuffle')
 
         // Broadcast game start to all players
         const gameStartPayload = {
             playerOrder: order,
-            startCard: startCard ? {
+            startCard: {
                 color: startCard.color,
                 value: startCard.value,
                 points: startCard.points,
                 drawValue: startCard.drawValue,
                 src: startCard.src,
-            } : null,
+            },
             players: newPlayers.map(p => ({
                 id: p.id,
                 name: p.name,
                 score: p.score,
                 handSize: p.hand.length,
             })),
+            firstTurn: firstPlayer,
+            direction: 'clockwise',
+            drawAmount: drawAmount,
         }
         
         console.log('Broadcasting game-started:', gameStartPayload)
@@ -826,14 +929,10 @@ export default function UnoGame() {
             }
         }
 
-        let startCard: CardType | null = null
-        for (let i = 0; i < newDeck.length; i++) {
-            if (newDeck[i].color !== 'any' && newDeck[i].value <= 9) {
-                startCard = newDeck.splice(i, 1)[0]
-                break
-            }
-        }
-        const newPlayPile = startCard ? [startCard] : []
+        // Random start card for AI mode too
+        const randomIndex = Math.floor(Math.random() * newDeck.length)
+        const startCard = newDeck.splice(randomIndex, 1)[0]
+        const newPlayPile = [startCard]
 
         setPlayers(newPlayers);             playersRef.current     = newPlayers
         setDeckState(newDeck);              deckRef.current        = newDeck
@@ -1221,6 +1320,21 @@ export default function UnoGame() {
         const p = players.find(pl => pl.id === currentTurn)
         if (p && !p.isHuman) playCPU(currentTurn)
     }, [currentTurn, gameOn, colorPickerOpen, playCPU, gameMode, players])
+    // #endregion
+
+    // #region DEBUG LOGGING
+    useEffect(() => {
+        if (gameMode === 'multiplayer' && mpState === 'playing') {
+            console.log('Game state:', {
+                gameOn,
+                currentTurn,
+                myPlayerId: myPlayerIdRef.current,
+                isMyTurn: currentTurn === myPlayerIdRef.current,
+                players: players.map(p => ({ id: p.id, name: p.name, handSize: p.hand.length })),
+                topCard: playPile[playPile.length - 1]?.value
+            })
+        }
+    }, [currentTurn, gameOn, players, mpState, gameMode])
     // #endregion
 
     // #region PLAY AGAIN
