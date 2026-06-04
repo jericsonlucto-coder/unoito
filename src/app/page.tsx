@@ -335,28 +335,56 @@ export default function UnoGame() {
         
         switch(action) {
             case 'PLAY_CARD': {
-                const { card, newHand, newPlayPile, newDirection, nextTurn, colorChosen } = payload
+                const { card, newHand, newPlayPile, newDirection, nextTurn, colorChosen, drawAmount, drawnCards, drawTargetPlayer } = payload
 
+                // Update play pile
                 const updatedPlayPile = [...playPileRef.current, card]
                 setPlayPile(updatedPlayPile)
                 playPileRef.current = updatedPlayPile
 
-                const updatedPlayers = playersRef.current.map(p =>
+                // Update player's hand
+                let updatedPlayers = playersRef.current.map(p =>
                     p.id === playerId ? { ...p, hand: newHand } : p
                 )
+                
+                // Handle draw penalty for other players
+                if (drawAmount && drawAmount > 0 && drawTargetPlayer) {
+                    console.log(`Applying draw ${drawAmount} to player:`, drawTargetPlayer)
+                    const drawPlayer = updatedPlayers.find(p => p.id === drawTargetPlayer)
+                    
+                    if (drawPlayer && drawnCards) {
+                        const newDrawCards = drawnCards.map((cardData: any) => 
+                            new Card(cardData.color, cardData.value, cardData.points, 
+                                    cardData.value === 0 || (cardData.value >= 1 && cardData.value <= 9),
+                                    cardData.drawValue, cardData.src)
+                        )
+                        drawPlayer.hand.push(...newDrawCards)
+                        audioManager.play('drawCard')
+                    }
+                }
+                
                 setPlayers(updatedPlayers)
                 playersRef.current = updatedPlayers
+                
+                // Update play pile (might have been modified by draw card reshuffling)
+                if (newPlayPile) {
+                    setPlayPile(newPlayPile)
+                    playPileRef.current = newPlayPile
+                }
 
+                // Update direction if changed
                 if (newDirection && newDirection !== directionRef.current) {
                     setDirection(newDirection)
                     directionRef.current = newDirection
                 }
 
+                // Update turn
                 if (nextTurn) {
                     setCurrentTurn(nextTurn)
                     currentTurnRef.current = nextTurn
                 }
 
+                // Handle color picker for wild cards
                 if (colorChosen) {
                     setColorPickerOpen(true)
                     colorPickerRef.current = true
@@ -365,6 +393,7 @@ export default function UnoGame() {
                     selectedWildColorRef.current = colorChosen
                 }
 
+                // Check for UNO
                 if (newHand.length === 1) {
                     triggerUno(playerId)
                 }
@@ -843,12 +872,28 @@ export default function UnoGame() {
             audioManager.play('plusCard')
             const nextPlayerIndex = (firstPlayerIndex + 1) % playerOrder.length
             drawPlayerId = playerOrder[nextPlayerIndex]
+            const drawPlayer = newPlayers.find(p => p.id === drawPlayerId)
+            if (drawPlayer) {
+                for (let i = 0; i < drawAmount; i++) {
+                    if (newDeck.length > 0) {
+                        drawPlayer.hand.push(newDeck.shift()!)
+                    }
+                }
+            }
             firstPlayer = playerOrder[(firstPlayerIndex + 2) % playerOrder.length]
         } else if (startCard.value === 14) {
             drawAmount = 4
             audioManager.play('plusCard')
             const nextPlayerIndex = (firstPlayerIndex + 1) % playerOrder.length
             drawPlayerId = playerOrder[nextPlayerIndex]
+            const drawPlayer = newPlayers.find(p => p.id === drawPlayerId)
+            if (drawPlayer) {
+                for (let i = 0; i < drawAmount; i++) {
+                    if (newDeck.length > 0) {
+                        drawPlayer.hand.push(newDeck.shift()!)
+                    }
+                }
+            }
             firstPlayer = playerOrder[(firstPlayerIndex + 2) % playerOrder.length]
             const colors = ['rgb(255, 6, 0)', 'rgb(0, 170, 69)', 'rgb(0, 150, 224)', 'rgb(255, 222, 0)']
             const randomColor = colors[Math.floor(Math.random() * colors.length)]
@@ -1142,12 +1187,63 @@ export default function UnoGame() {
 
         let updatedPlayers = playersRef.current.map(p =>
             p.id === myPlayerIdRef.current ? { ...p, hand: newPlayerHand } : p)
-        setPlayers(updatedPlayers);         playersRef.current  = updatedPlayers
-        setPlayPile(newPlayPile);           playPileRef.current = newPlayPile
+        
+        // Handle draw penalty
+        let nextTurn: Player['id'] | null = null
+        let drawAmount = 0
+        let drawnCards: CardType[] = []
+        let drawTargetPlayer: Player['id'] | null = null
+        
+        if (playedCard.drawValue > 0) {
+            audioManager.play('plusCard')
+            drawAmount = playedCard.drawValue
+            
+            // Determine who draws cards (next player)
+            drawTargetPlayer = getNextTurn(myPlayerIdRef.current, newDir, order)
+            const nextPlayer = updatedPlayers.find(p => p.id === drawTargetPlayer)
+            
+            if (nextPlayer) {
+                let updDeck = [...deckRef.current]
+                let updPile = [...newPlayPile]
+                
+                for (let i = 0; i < drawAmount; i++) {
+                    if (updDeck.length > 0) {
+                        const drawnCard = updDeck.shift()!
+                        nextPlayer.hand.push(drawnCard)
+                        drawnCards.push(drawnCard)
+                        audioManager.play('drawCard')
+                    } else if (updPile.length > 1) {
+                        const toShuffle = updPile.slice(0, -1)
+                        updDeck = shuffleDeck(toShuffle)
+                        updPile = [updPile[updPile.length - 1]]
+                        const drawnCard = updDeck.shift()!
+                        nextPlayer.hand.push(drawnCard)
+                        drawnCards.push(drawnCard)
+                        audioManager.play('drawCard')
+                    }
+                }
+                
+                // Update deck and play pile
+                setDeckState(updDeck)
+                deckRef.current = updDeck
+                setPlayPile(updPile)
+                playPileRef.current = updPile
+                
+                // The player who drew cards gets skipped, so next turn is the player after them
+                const drawPlayerIndex = order.indexOf(drawTargetPlayer)
+                nextTurn = order[(drawPlayerIndex + 1) % order.length]
+            }
+        }
+        
+        setPlayers(updatedPlayers)
+        playersRef.current = updatedPlayers
+        setPlayPile(newPlayPile)
+        playPileRef.current = newPlayPile
 
         if (playedCard.color !== 'any') {
             setWildCardColor('')
-            setSelectedWildColor('');       selectedWildColorRef.current = ''
+            setSelectedWildColor('')
+            selectedWildColorRef.current = ''
         }
 
         if (newPlayerHand.length === 1) {
@@ -1157,52 +1253,42 @@ export default function UnoGame() {
             }
         }
 
-        if (playedCard.drawValue > 0) {
-            audioManager.play('plusCard')
-            const nextId     = getNextTurn(myPlayerIdRef.current, newDir, order)
-            const nextPlayer = playersRef.current.find(p => p.id === nextId)!
-            let updHand      = [...nextPlayer.hand]
-            let updDeck      = [...deckRef.current]
-            let updPile      = [...newPlayPile]
-
-            for (let i = 0; i < playedCard.drawValue; i++) {
-                if (updDeck.length > 0) {
-                    updHand.push(updDeck.shift()!)
-                } else if (updPile.length > 1) {
-                    const toShuffle = updPile.slice(0, -1)
-                    updDeck = shuffleDeck(toShuffle)
-                    updPile = [updPile[updPile.length - 1]]
-                    updHand.push(updDeck.shift()!)
-                }
-                audioManager.play('drawCard')
-            }
-
-            updatedPlayers = playersRef.current.map(p => {
-                if (p.id === nextId) return { ...p, hand: updHand }
-                return p
-            })
-            setPlayers(updatedPlayers);     playersRef.current  = updatedPlayers
-            setDeckState(updDeck);          deckRef.current     = updDeck
-            setPlayPile(updPile);           playPileRef.current = updPile
-        }
-
         if (newPlayerHand.length === 0) {
             await checkForWinner(playersRef.current)
             return
         }
 
+        // Handle wild card color picker
         if (playedCard.color === 'any' && playedCard.drawValue === 0) {
             setColorPickerOpen(true)
             colorPickerRef.current = true
+            
+            // Broadcast that we're waiting for color choice
+            if (gameModeRef.current === 'multiplayer') {
+                await broadcastAction('PLAY_CARD', {
+                    card: playedCard,
+                    newHand: newPlayerHand,
+                    newPlayPile: newPlayPile,
+                    newDirection: newDir !== currentDir ? newDir : null,
+                    nextTurn: null,
+                    colorChosen: null,
+                    drawAmount: 0,
+                    drawnCards: [],
+                    drawTargetPlayer: null,
+                })
+            }
             return
         }
 
-        let nextTurn: Player['id']
-        if (playedCard.value === 11) {
-            nextTurn = getNextTurn(getNextTurn(myPlayerIdRef.current, newDir, order), newDir, order)
-        } else {
-            nextTurn = getNextTurn(myPlayerIdRef.current, newDir, order)
+        // If no nextTurn was set (no draw card), calculate normally
+        if (!nextTurn) {
+            if (playedCard.value === 11) { // Skip card
+                nextTurn = getNextTurn(getNextTurn(myPlayerIdRef.current, newDir, order), newDir, order)
+            } else {
+                nextTurn = getNextTurn(myPlayerIdRef.current, newDir, order)
+            }
         }
+        
         setCurrentTurn(nextTurn)
         currentTurnRef.current = nextTurn
 
@@ -1212,8 +1298,17 @@ export default function UnoGame() {
                 newHand: newPlayerHand,
                 newPlayPile: newPlayPile,
                 newDirection: newDir !== currentDir ? newDir : null,
-                nextTurn,
+                nextTurn: nextTurn,
                 colorChosen: null,
+                drawAmount: drawAmount,
+                drawnCards: drawnCards.map(c => ({
+                    color: c.color,
+                    value: c.value,
+                    points: c.points,
+                    drawValue: c.drawValue,
+                    src: c.src,
+                })),
+                drawTargetPlayer: drawTargetPlayer,
             })
         }
     }, [triggerUno, checkForWinner, getNextTurn, broadcastAction])
