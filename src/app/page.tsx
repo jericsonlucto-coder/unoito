@@ -257,6 +257,7 @@ export default function UnoGame() {
     const directionRef         = useRef(direction)
     const gameModeRef          = useRef(gameMode)
     const myPlayerIdRef        = useRef(myPlayerId)
+    const myPlayerNameRef      = useRef(myPlayerName)
     const roomCodeRef          = useRef(roomCode)
     const playerOrderRef       = useRef(playerOrderState)
     const mpConnectedRef       = useRef(mpConnectedPlayers)
@@ -271,6 +272,7 @@ export default function UnoGame() {
     useEffect(() => { directionRef.current         = direction },         [direction])
     useEffect(() => { gameModeRef.current          = gameMode },          [gameMode])
     useEffect(() => { myPlayerIdRef.current        = myPlayerId },        [myPlayerId])
+    useEffect(() => { myPlayerNameRef.current      = myPlayerName },      [myPlayerName])
     useEffect(() => { roomCodeRef.current          = roomCode },          [roomCode])
     useEffect(() => { playerOrderRef.current       = playerOrderState },  [playerOrderState])
     useEffect(() => { mpConnectedRef.current       = mpConnectedPlayers },[mpConnectedPlayers])
@@ -551,7 +553,7 @@ export default function UnoGame() {
         const myIndex = playerOrder.findIndex((id: Player['id']) => id === myPlayerIdRef.current)
         const playerCount = playerOrder.length
         
-        console.log(`My index: ${myIndex}, My ID: ${myPlayerIdRef.current}, My Name: ${myPlayerName}`)
+        console.log(`My index: ${myIndex}, My ID: ${myPlayerIdRef.current}, My Name: ${myPlayerNameRef.current}`)
         console.log('Player order:', playerOrder)
         
         // Calculate positions - for 3 players: bottom, left, right (no top)
@@ -577,7 +579,7 @@ export default function UnoGame() {
         const initializedPlayers: Player[] = playerInfo.map((info: any) => {
             const isMe = info.id === myPlayerIdRef.current
             const position = playerPositions[info.id] || (isMe ? 'bottom' : 'top')
-            // Use the actual name from the payload
+            // Use the actual name from the payload, add (You) only for the current player
             const displayName = isMe ? `${info.name} (You)` : info.name
             
             const hand = info.hand.map((cardData: any) => 
@@ -762,9 +764,9 @@ export default function UnoGame() {
             const data = raw as SlotPayload
             console.log('Slot assigned:', data)
             
-            // Update this player's ID when assigned
-            if (data.playerId) {
-                console.log(`Setting myPlayerId from ${myPlayerIdRef.current} to ${data.playerId}`)
+            // Update this player's ID when assigned - only if the name matches
+            if (data.playerId && data.playerName === myPlayerNameRef.current) {
+                console.log(`Setting myPlayerId from ${myPlayerIdRef.current} to ${data.playerId} (name match: ${data.playerName})`)
                 setMyPlayerId(data.playerId)
                 myPlayerIdRef.current = data.playerId
             }
@@ -789,6 +791,7 @@ export default function UnoGame() {
         const hostId = 'player'
         setMyPlayerId(hostId)
         myPlayerIdRef.current = hostId
+        myPlayerNameRef.current = myPlayerName
 
         const pusher = await getPusherInstance() as { subscribe: (ch: string) => PusherChannel }
         const channel = pusher.subscribe(`uno-room-${code}`)
@@ -815,6 +818,9 @@ export default function UnoGame() {
         setRoomCode(code)
         roomCodeRef.current = code
         setIsHost(false)
+        
+        // Store the player name in ref immediately
+        myPlayerNameRef.current = myPlayerName
         
         const tempId = 'temp_' + Date.now()
         setMyPlayerId(tempId as Player['id'])
@@ -1064,7 +1070,7 @@ export default function UnoGame() {
     }, [])
     // #endregion
 
-    // #region CPU LOGIC (simplified - same as before but kept)
+    // #region CPU LOGIC (simplified)
     const playCPU = useCallback(async (cpuId: Player['id']) => {
         if (currentTurnRef.current !== cpuId) return
         if (!gameOnRef.current) return
@@ -1159,7 +1165,7 @@ export default function UnoGame() {
     }, [triggerUno, checkForWinner, getCpuDelay, getNextTurn])
     // #endregion
 
-    // #region PLAYER CARD CLICK (simplified)
+    // #region PLAYER CARD CLICK
     const handlePlayerCardClick = useCallback(async (index: number) => {
         if (currentTurnRef.current !== myPlayerIdRef.current) return
         if (colorPickerRef.current) return
@@ -1377,6 +1383,7 @@ export default function UnoGame() {
             console.log('=== CURRENT GAME STATE ===')
             console.log('Current turn:', currentTurn)
             console.log('My player ID:', myPlayerIdRef.current)
+            console.log('My player Name:', myPlayerNameRef.current)
             console.log('Players:', players.map(p => ({ id: p.id, name: p.name, position: p.position, handSize: p.hand?.length || 0 })))
         }
     }, [currentTurn, players, mpState, gameMode])
