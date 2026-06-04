@@ -352,7 +352,6 @@ export default function UnoGame() {
                 if (receivedUpdatedPlayers && Array.isArray(receivedUpdatedPlayers)) {
                     updatedPlayers = receivedUpdatedPlayers.map((p: any) => {
                         const existingPlayer = playersRef.current.find(ex => ex.id === p.id)
-                        // Add "(You)" back for the current player only
                         const displayName = p.id === myPlayerIdRef.current ? `${p.name} (You)` : p.name
                         return {
                             ...p,
@@ -558,7 +557,28 @@ export default function UnoGame() {
         setPlayerOrderState(playerOrder)
         playerOrderRef.current = playerOrder
         
-        const myIndex = playerOrder.findIndex((id: Player['id']) => id === myPlayerIdRef.current)
+        // Try to find player by ID first
+        let myIndex = playerOrder.findIndex((id: Player['id']) => id === myPlayerIdRef.current)
+        
+        // If not found by ID, try to find by name match
+        if (myIndex === -1 && myPlayerNameRef.current) {
+            console.log(`Player ID ${myPlayerIdRef.current} not found, trying to find by name: ${myPlayerNameRef.current}`)
+            const myInfoIndex = playerInfo.findIndex((p: any) => p.name === myPlayerNameRef.current)
+            if (myInfoIndex !== -1) {
+                const correctId = playerOrder[myInfoIndex]
+                console.log(`Found by name match! Setting myPlayerId from ${myPlayerIdRef.current} to ${correctId}`)
+                setMyPlayerId(correctId)
+                myPlayerIdRef.current = correctId
+                myIndex = myInfoIndex
+            }
+        }
+        
+        // If still not found, use index 0 as fallback
+        if (myIndex === -1) {
+            console.warn('Could not find player in order, using index 0')
+            myIndex = 0
+        }
+        
         const playerCount = playerOrder.length
         
         console.log(`My index: ${myIndex}, My ID: ${myPlayerIdRef.current}, My Name: ${myPlayerNameRef.current}`)
@@ -585,7 +605,6 @@ export default function UnoGame() {
         const initializedPlayers: Player[] = playerInfo.map((info: any) => {
             const isMe = info.id === myPlayerIdRef.current
             const position = playerPositions[info.id] || (isMe ? 'bottom' : 'top')
-            // Add "(You)" only for the current player
             const displayName = isMe ? `${info.name} (You)` : info.name
             
             const hand = info.hand.map((cardData: any) => 
@@ -768,10 +787,13 @@ export default function UnoGame() {
 
         channel.bind('slot-assigned', (raw: unknown) => {
             const data = raw as SlotPayload
-            console.log('Slot assigned:', data)
+            console.log('Slot assigned received:', data)
+            console.log('Current myPlayerNameRef:', myPlayerNameRef.current)
+            console.log('Current myPlayerId:', myPlayerIdRef.current)
             
+            // Update this player's ID when assigned - match by name
             if (data.playerId && data.playerName === myPlayerNameRef.current) {
-                console.log(`Setting myPlayerId from ${myPlayerIdRef.current} to ${data.playerId}`)
+                console.log(`Setting myPlayerId from ${myPlayerIdRef.current} to ${data.playerId} (name match: ${data.playerName})`)
                 setMyPlayerId(data.playerId)
                 myPlayerIdRef.current = data.playerId
             }
@@ -866,6 +888,8 @@ export default function UnoGame() {
             const data = raw as JoinPayload
             if (!data.requestSlot) return
             
+            console.log('Processing player join request:', data)
+            
             const nextSlot = availableSlots.find(slot => !assignedSlots.includes(slot))
             
             if (!nextSlot) {
@@ -883,11 +907,14 @@ export default function UnoGame() {
             setMpConnectedPlayers(newConnected)
             mpConnectedRef.current = newConnected
 
-            await pusherTrigger(`uno-room-${roomCodeRef.current}`, 'slot-assigned', {
+            const slotPayload = {
                 playerId:   nextSlot,
                 playerName: data.playerName,
                 allPlayers: newConnected,
-            })
+            }
+            console.log('Sending slot-assigned payload:', slotPayload)
+            
+            await pusherTrigger(`uno-room-${roomCodeRef.current}`, 'slot-assigned', slotPayload)
         }
 
         mpChannel.bind('player-joined', handlePlayerJoined)
@@ -916,7 +943,7 @@ export default function UnoGame() {
             hand: [],
             score: 0,
             position: 'top',
-            name: cp.name, // No "(You)" here - will be added by each client
+            name: cp.name,
             isHuman: true,
         }))
 
@@ -1014,7 +1041,7 @@ export default function UnoGame() {
             },
             players: newPlayers.map(p => ({
                 id: p.id,
-                name: p.name, // No "(You)" here
+                name: p.name,
                 score: p.score,
                 hand: p.hand.map(card => ({
                     color: card.color,
@@ -1273,7 +1300,6 @@ export default function UnoGame() {
         currentTurnRef.current = nextTurn
 
         if (gameModeRef.current === 'multiplayer') {
-            // Broadcast without "(You)" in names
             await broadcastAction('PLAY_CARD', {
                 card: playedCard,
                 newHand: newPlayerHand,
@@ -1284,7 +1310,7 @@ export default function UnoGame() {
                 drawTargetPlayer: nextTurn,
                 updatedPlayers: updatedPlayers.map(p => ({
                     id: p.id,
-                    name: p.name.replace(' (You)', ''), // Remove (You) for broadcast
+                    name: p.name.replace(' (You)', ''),
                     score: p.score,
                     position: p.position,
                     hand: p.hand.map(c => ({
