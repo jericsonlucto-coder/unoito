@@ -201,6 +201,7 @@ interface JoinPayload {
 
 interface SlotPayload {
     playerId: Player['id']
+    playerName?: string
     allPlayers: { id: string; name: string }[]
 }
 // #endregion
@@ -336,31 +337,26 @@ export default function UnoGame() {
             case 'PLAY_CARD': {
                 const { card, newHand, newPlayPile, newDirection, nextTurn, colorChosen } = payload
 
-                // Update play pile
                 const updatedPlayPile = [...playPileRef.current, card]
                 setPlayPile(updatedPlayPile)
                 playPileRef.current = updatedPlayPile
 
-                // Update player's hand
                 const updatedPlayers = playersRef.current.map(p =>
                     p.id === playerId ? { ...p, hand: newHand } : p
                 )
                 setPlayers(updatedPlayers)
                 playersRef.current = updatedPlayers
 
-                // Update direction if changed
                 if (newDirection && newDirection !== directionRef.current) {
                     setDirection(newDirection)
                     directionRef.current = newDirection
                 }
 
-                // Update turn
                 if (nextTurn) {
                     setCurrentTurn(nextTurn)
                     currentTurnRef.current = nextTurn
                 }
 
-                // Handle color picker for wild cards
                 if (colorChosen) {
                     setColorPickerOpen(true)
                     colorPickerRef.current = true
@@ -369,7 +365,6 @@ export default function UnoGame() {
                     selectedWildColorRef.current = colorChosen
                 }
 
-                // Check for UNO
                 if (newHand.length === 1) {
                     triggerUno(playerId)
                 }
@@ -379,14 +374,12 @@ export default function UnoGame() {
             case 'DRAW_CARD': {
                 const { newHand, newDeck, newPlayPile, nextTurn } = payload
 
-                // Update player's hand
                 const updatedPlayers = playersRef.current.map(p =>
                     p.id === playerId ? { ...p, hand: newHand } : p
                 )
                 setPlayers(updatedPlayers)
                 playersRef.current = updatedPlayers
 
-                // Update deck and play pile
                 if (newDeck) {
                     setDeckState(newDeck)
                     deckRef.current = newDeck
@@ -396,13 +389,11 @@ export default function UnoGame() {
                     playPileRef.current = newPlayPile
                 }
 
-                // Update turn if specified
                 if (nextTurn) {
                     setCurrentTurn(nextTurn)
                     currentTurnRef.current = nextTurn
                 }
 
-                // Play card sound
                 audioManager.play('drawCard')
                 break
             }
@@ -410,7 +401,6 @@ export default function UnoGame() {
             case 'COLOR_CHOSEN': {
                 const { color, newPlayPile, nextTurn } = payload
 
-                // Update play pile with new color
                 const updatedPile = [...playPileRef.current]
                 updatedPile[updatedPile.length - 1] = { ...updatedPile[updatedPile.length - 1], color }
                 setPlayPile(updatedPile)
@@ -441,7 +431,6 @@ export default function UnoGame() {
                 setGameOn(false)
                 gameOnRef.current = false
 
-                // Update scores
                 if (updatedPlayers) {
                     setPlayers(updatedPlayers)
                     playersRef.current = updatedPlayers
@@ -477,117 +466,110 @@ export default function UnoGame() {
     }, [triggerUno])
     // #endregion
 
-  // #region INITIALIZE GAME FROM START
-const initializeGameFromStart = useCallback(async (payload: any) => {
-    console.log('Initializing game from start:', payload)
-    const { playerOrder, startCard, players: playerInfo, firstTurn, direction: startDirection, drawAmount, drawPlayerId, playerPositions } = payload
-    
-    // Set up player order
-    setPlayerOrderState(playerOrder)
-    playerOrderRef.current = playerOrder
-    
-    // Create and shuffle deck locally
-    let newDeck = createDeck()
-    newDeck = shuffleDeck(newDeck)
-    
-    // Initialize players with correct IDs, names, and positions
-    const initializedPlayers: Player[] = playerInfo.map((info: any) => ({
-        id: info.id as Player['id'],
-        hand: [],
-        score: info.score || 0,
-        position: playerPositions?.[info.id] || (info.id === myPlayerIdRef.current ? 'bottom' : 'top'),
-        name: info.name,
-        isHuman: true,
-    }))
-    
-    // Deal 7 cards to each player
-    for (let i = 0; i < 7; i++) {
-        for (let j = 0; j < initializedPlayers.length; j++) {
-            if (newDeck.length > 0) {
-                initializedPlayers[j].hand.push(newDeck.shift()!)
-            }
-        }
-    }
-    
-    // Create play pile with start card
-    let startCardObj: CardType | null = null
-    if (startCard) {
-        startCardObj = new Card(
-            startCard.color,
-            startCard.value,
-            startCard.points,
-            startCard.value === 0 || (startCard.value >= 1 && startCard.value <= 9),
-            startCard.drawValue,
-            startCard.src
-        )
-    }
-    
-    const newPlayPile = startCardObj ? [startCardObj] : []
-    
-    // Handle draw penalty if start card is a draw card
-    let nextTurn = firstTurn
-    let currentDeck = [...newDeck]
-    let currentPlayPile = [...newPlayPile]
-    let currentPlayers = [...initializedPlayers]
-    let appliedDrawAmount = 0
-    
-    if (drawAmount && drawAmount > 0 && drawPlayerId) {
-        console.log(`Start card is a draw ${drawAmount} card! Applying penalty to player: ${drawPlayerId}`)
-        const drawPlayer = currentPlayers.find(p => p.id === drawPlayerId)
+    // #region INITIALIZE GAME FROM START
+    const initializeGameFromStart = useCallback(async (payload: any) => {
+        console.log('Initializing game from start:', payload)
+        const { playerOrder, startCard, players: playerInfo, firstTurn, direction: startDirection, drawAmount, drawPlayerId, playerPositions } = payload
         
-        if (drawPlayer) {
-            appliedDrawAmount = drawAmount
-            for (let i = 0; i < drawAmount; i++) {
-                if (currentDeck.length > 0) {
-                    drawPlayer.hand.push(currentDeck.shift()!)
-                } else if (currentPlayPile.length > 1) {
-                    const toShuffle = currentPlayPile.slice(0, -1)
-                    currentDeck = shuffleDeck(toShuffle)
-                    currentPlayPile = [currentPlayPile[currentPlayPile.length - 1]]
-                    drawPlayer.hand.push(currentDeck.shift()!)
+        setPlayerOrderState(playerOrder)
+        playerOrderRef.current = playerOrder
+        
+        let newDeck = createDeck()
+        newDeck = shuffleDeck(newDeck)
+        
+        const initializedPlayers: Player[] = playerInfo.map((info: any) => {
+            const isMe = info.id === myPlayerIdRef.current
+            return {
+                id: info.id as Player['id'],
+                hand: [],
+                score: info.score || 0,
+                position: playerPositions?.[info.id] || (isMe ? 'bottom' : 'top'),
+                name: isMe ? `${info.name} (You)` : info.name,
+                isHuman: true,
+            }
+        })
+        
+        for (let i = 0; i < 7; i++) {
+            for (let j = 0; j < initializedPlayers.length; j++) {
+                if (newDeck.length > 0) {
+                    initializedPlayers[j].hand.push(newDeck.shift()!)
                 }
             }
-            audioManager.play('plusCard')
-            // The nextTurn is already set correctly from the host
         }
-    }
-    
-    // Determine if it's this player's turn
-    const isMyTurn = nextTurn === myPlayerIdRef.current
-    const didIDraw = drawAmount && drawAmount > 0 && drawPlayerId === myPlayerIdRef.current
-    
-    console.log('My player ID:', myPlayerIdRef.current, 'First turn:', nextTurn, 'Is my turn:', isMyTurn, 'Did I draw:', didIDraw)
-    
-    // Update all state
-    setPlayers(currentPlayers)
-    playersRef.current = currentPlayers
-    setDeckState(currentDeck)
-    deckRef.current = currentDeck
-    setPlayPile(currentPlayPile)
-    playPileRef.current = currentPlayPile
-    setCurrentTurn(nextTurn)
-    currentTurnRef.current = nextTurn
-    setDirection(startDirection || 'clockwise')
-    directionRef.current = startDirection || 'clockwise'
-    setGameOn(true)
-    gameOnRef.current = true
-    setColorPickerOpen(false)
-    colorPickerRef.current = false
-    setMpState('playing')
-    
-    audioManager.play('shuffle')
-    
-    // Show notification based on game state
-    setTimeout(() => {
-        if (isMyTurn && didIDraw) {
-            alert(`Start card is Draw ${drawAmount}! You drew ${drawAmount} cards. It's your turn! 🎮`)
-        } else if (isMyTurn) {
-            alert("It's your turn! 🎮")
-        } else if (didIDraw) {
-            alert(`Start card is Draw ${drawAmount}! You drew ${drawAmount} cards.`)
+        
+        let startCardObj: CardType | null = null
+        if (startCard) {
+            startCardObj = new Card(
+                startCard.color,
+                startCard.value,
+                startCard.points,
+                startCard.value === 0 || (startCard.value >= 1 && startCard.value <= 9),
+                startCard.drawValue,
+                startCard.src
+            )
         }
-    }, 500)
-}, [])
+        
+        const newPlayPile = startCardObj ? [startCardObj] : []
+        
+        let nextTurn = firstTurn
+        let currentDeck = [...newDeck]
+        let currentPlayPile = [...newPlayPile]
+        let currentPlayers = [...initializedPlayers]
+        
+        if (drawAmount && drawAmount > 0 && drawPlayerId) {
+            console.log(`Start card is a draw ${drawAmount} card! Applying penalty to player: ${drawPlayerId}`)
+            const drawPlayer = currentPlayers.find(p => p.id === drawPlayerId)
+            
+            if (drawPlayer) {
+                for (let i = 0; i < drawAmount; i++) {
+                    if (currentDeck.length > 0) {
+                        drawPlayer.hand.push(currentDeck.shift()!)
+                    } else if (currentPlayPile.length > 1) {
+                        const toShuffle = currentPlayPile.slice(0, -1)
+                        currentDeck = shuffleDeck(toShuffle)
+                        currentPlayPile = [currentPlayPile[currentPlayPile.length - 1]]
+                        drawPlayer.hand.push(currentDeck.shift()!)
+                    }
+                }
+                audioManager.play('plusCard')
+            }
+        }
+        
+        const isMyTurn = nextTurn === myPlayerIdRef.current
+        const didIDraw = drawAmount && drawAmount > 0 && drawPlayerId === myPlayerIdRef.current
+        
+        console.log('My player ID:', myPlayerIdRef.current)
+        console.log('First turn:', nextTurn, 'Is my turn:', isMyTurn)
+        console.log('Did I draw:', didIDraw)
+        
+        setPlayers(currentPlayers)
+        playersRef.current = currentPlayers
+        setDeckState(currentDeck)
+        deckRef.current = currentDeck
+        setPlayPile(currentPlayPile)
+        playPileRef.current = currentPlayPile
+        setCurrentTurn(nextTurn)
+        currentTurnRef.current = nextTurn
+        setDirection(startDirection || 'clockwise')
+        directionRef.current = startDirection || 'clockwise'
+        setGameOn(true)
+        gameOnRef.current = true
+        setColorPickerOpen(false)
+        colorPickerRef.current = false
+        setMpState('playing')
+        
+        audioManager.play('shuffle')
+        
+        setTimeout(() => {
+            if (isMyTurn && didIDraw) {
+                alert(`Start card is Draw ${drawAmount}! You drew ${drawAmount} cards. It's your turn! 🎮`)
+            } else if (isMyTurn) {
+                alert("It's your turn! 🎮")
+            } else if (didIDraw) {
+                alert(`Start card is Draw ${drawAmount}! You drew ${drawAmount} cards.`)
+            }
+        }, 500)
+    }, [])
     // #endregion
 
     // #region CHECK WINNER
@@ -677,12 +659,17 @@ const initializeGameFromStart = useCallback(async (payload: any) => {
 
         channel.bind('slot-assigned', (raw: unknown) => {
             const data = raw as SlotPayload
+            console.log('Slot assigned:', data)
+            
             if (data.playerId) {
                 setMyPlayerId(data.playerId)
                 myPlayerIdRef.current = data.playerId
+                console.log('My player ID set to:', data.playerId)
             }
+            
             if (data.allPlayers) {
                 setMpConnectedPlayers(data.allPlayers)
+                mpConnectedRef.current = data.allPlayers
             }
         })
     }, [applyGameAction, initializeGameFromStart])
@@ -729,7 +716,7 @@ const initializeGameFromStart = useCallback(async (payload: any) => {
         bindChannelEvents(channel)
 
         await pusherTrigger(`uno-room-${code}`, 'player-joined', {
-            playerId:    'joining',
+            playerId:    'temp_' + Date.now(),
             playerName:  myPlayerName,
             requestSlot: true,
         })
@@ -742,13 +729,16 @@ const initializeGameFromStart = useCallback(async (payload: any) => {
     // #region HOST ASSIGNS SLOT
     useEffect(() => {
         if (!isHost || !mpChannel || gameMode !== 'multiplayer') return
-        const slots: Player['id'][] = ['p2', 'p3', 'p4']
+        const slots: Player['id'][] = ['player', 'p2', 'p3', 'p4']
+        let nextSlotIndex = 0
 
         const handlePlayerJoined = async (raw: unknown) => {
             const data = raw as JoinPayload
             if (!data.requestSlot) return
-            const usedIds       = mpConnectedRef.current.map(p => p.id)
-            const availableSlot = slots.find(s => !usedIds.includes(s))
+            
+            const availableSlot = slots[nextSlotIndex]
+            nextSlotIndex++
+            
             if (!availableSlot) return
 
             const newConnected = [...mpConnectedRef.current, { id: availableSlot, name: data.playerName }]
@@ -757,6 +747,7 @@ const initializeGameFromStart = useCallback(async (payload: any) => {
 
             await pusherTrigger(`uno-room-${roomCodeRef.current}`, 'slot-assigned', {
                 playerId:   availableSlot,
+                playerName: data.playerName,
                 allPlayers: newConnected,
             })
         }
@@ -775,24 +766,23 @@ const initializeGameFromStart = useCallback(async (payload: any) => {
         if (mpConnectedPlayers.length < 2) { setMpError('Need at least 2 players'); return }
 
         const positions: Player['position'][] = ['bottom', 'top', 'left', 'right']
-        const playerIds: Player['id'][]       = ['player', 'p2', 'p3', 'p4']
-        const count = Math.min(mpConnectedPlayers.length, 4)
-        const order = playerIds.slice(0, count) as Player['id'][]
-
-        // Create player positions mapping
-        const playerPositions: { [key: string]: Player['position'] } = {}
-        playerPositions[myPlayerIdRef.current] = 'bottom'
         
-        // Assign positions to other players
-        let positionIndex = 1
-        for (const player of mpConnectedPlayers.slice(0, count)) {
-            if (player.id !== myPlayerIdRef.current) {
-                playerPositions[player.id] = positions[positionIndex % positions.length]
-                positionIndex++
+        const playerPositions: { [key: string]: Player['position'] } = {}
+        const playerOrder: Player['id'][] = mpConnectedPlayers.map(p => p.id as Player['id'])
+        
+        playerOrder.forEach((playerId, index) => {
+            if (playerId === myPlayerIdRef.current) {
+                playerPositions[playerId] = 'bottom'
+            } else if (index === 0) {
+                playerPositions[playerId] = 'top'
+            } else if (index === 1) {
+                playerPositions[playerId] = 'left'
+            } else if (index === 2) {
+                playerPositions[playerId] = 'right'
             }
-        }
+        })
 
-        const newPlayers: Player[] = mpConnectedPlayers.slice(0, count).map((cp) => ({
+        const newPlayers: Player[] = mpConnectedPlayers.map((cp) => ({
             id: cp.id as Player['id'],
             hand: [],
             score: 0,
@@ -810,62 +800,58 @@ const initializeGameFromStart = useCallback(async (payload: any) => {
             }
         }
 
-        // Randomly select a start card
         const randomIndex = Math.floor(Math.random() * newDeck.length)
         const startCard = newDeck.splice(randomIndex, 1)[0]
         
         const newPlayPile = [startCard]
         
-        // Determine who goes first (random player)
-        let firstPlayerIndex = Math.floor(Math.random() * order.length)
-        let firstPlayer = order[firstPlayerIndex]
+        const firstPlayerIndex = Math.floor(Math.random() * playerOrder.length)
+        let firstPlayer = playerOrder[firstPlayerIndex]
         let drawAmount = 0
         let drawPlayerId: Player['id'] | null = null
         
-        // Handle special cards as start cards
-        if (startCard.value === 12) { // Draw 2
+        if (startCard.value === 12) {
             drawAmount = 2
             audioManager.play('plusCard')
-            const nextPlayerIndex = (firstPlayerIndex + 1) % order.length
-            drawPlayerId = order[nextPlayerIndex]
-            firstPlayer = order[(firstPlayerIndex + 2) % order.length]
-        } else if (startCard.value === 14) { // Wild Draw 4
+            const nextPlayerIndex = (firstPlayerIndex + 1) % playerOrder.length
+            drawPlayerId = playerOrder[nextPlayerIndex]
+            firstPlayer = playerOrder[(firstPlayerIndex + 2) % playerOrder.length]
+        } else if (startCard.value === 14) {
             drawAmount = 4
             audioManager.play('plusCard')
-            const nextPlayerIndex = (firstPlayerIndex + 1) % order.length
-            drawPlayerId = order[nextPlayerIndex]
-            firstPlayer = order[(firstPlayerIndex + 2) % order.length]
+            const nextPlayerIndex = (firstPlayerIndex + 1) % playerOrder.length
+            drawPlayerId = playerOrder[nextPlayerIndex]
+            firstPlayer = playerOrder[(firstPlayerIndex + 2) % playerOrder.length]
             const colors = ['rgb(255, 6, 0)', 'rgb(0, 170, 69)', 'rgb(0, 150, 224)', 'rgb(255, 222, 0)']
             const randomColor = colors[Math.floor(Math.random() * colors.length)]
             startCard.color = randomColor
-        } else if (startCard.value === 10) { // Reverse
-            firstPlayer = order[firstPlayerIndex]
-        } else if (startCard.value === 11) { // Skip
-            firstPlayer = order[(firstPlayerIndex + 1) % order.length]
-        } else if (startCard.color === 'any' && startCard.value === 13) { // Wild
+        } else if (startCard.value === 10) {
+            firstPlayer = playerOrder[firstPlayerIndex]
+        } else if (startCard.value === 11) {
+            firstPlayer = playerOrder[(firstPlayerIndex + 1) % playerOrder.length]
+        } else if (startCard.color === 'any' && startCard.value === 13) {
             const colors = ['rgb(255, 6, 0)', 'rgb(0, 170, 69)', 'rgb(0, 150, 224)', 'rgb(255, 222, 0)']
             const randomColor = colors[Math.floor(Math.random() * colors.length)]
             startCard.color = randomColor
         }
         
-        console.log('Game starting - first player:', firstPlayer, 'Start card:', startCard.value, 'Draw amount:', drawAmount)
+        console.log('Game starting - Player order:', playerOrder)
+        console.log('First player:', firstPlayer, 'My ID:', myPlayerIdRef.current)
 
-        // Update host state
         setPlayers(newPlayers);             playersRef.current     = newPlayers
         setDeckState(newDeck);              deckRef.current        = newDeck
         setPlayPile(newPlayPile);           playPileRef.current    = newPlayPile
         setCurrentTurn(firstPlayer);        currentTurnRef.current = firstPlayer
         setDirection('clockwise');          directionRef.current   = 'clockwise'
-        setPlayerOrderState(order);         playerOrderRef.current = order
+        setPlayerOrderState(playerOrder);   playerOrderRef.current = playerOrder
         setGameOn(true);                    gameOnRef.current      = true
         setColorPickerOpen(false);          colorPickerRef.current = false
         setMpState('playing')
 
         audioManager.play('shuffle')
 
-        // Broadcast game start to all players
         const gameStartPayload = {
-            playerOrder: order,
+            playerOrder: playerOrder,
             startCard: {
                 color: startCard.color,
                 value: startCard.value,
@@ -1346,7 +1332,6 @@ const initializeGameFromStart = useCallback(async (payload: any) => {
     const topCard      = playPile[playPile.length - 1]
     const myPlayer     = players.find(p => p.id === myPlayerId)
     const otherPlayers = players.filter(p => p.id !== myPlayerId).sort((a, b) => {
-        // Sort players by position for consistent display
         const order = { top: 0, left: 1, right: 2 }
         return (order[a.position as keyof typeof order] || 0) - (order[b.position as keyof typeof order] || 0)
     })
@@ -1722,7 +1707,6 @@ const initializeGameFromStart = useCallback(async (payload: any) => {
                 {gameMode === 'ai' ? '🤖 vs AI' : `🌐 ${roomCode}`}
             </div>
 
-            {/* Other Players - positioned around the table */}
             {otherPlayers.map(op => {
                 const isVertical = op.position === 'left' || op.position === 'right'
                 const isMyTurn   = currentTurn === op.id
@@ -1780,7 +1764,7 @@ const initializeGameFromStart = useCallback(async (payload: any) => {
                             <span className="turn-player">🎮 YOUR TURN 🎮</span>
                         ) : (
                             <span className="turn-cpu">
-                                🎯 {players.find(p => p.id === currentTurn)?.name}&apos;s TURN
+                                🎯 {players.find(p => p.id === currentTurn)?.name?.replace(' (You)', '')}&apos;s TURN
                             </span>
                         )}
                     </p>
@@ -1852,11 +1836,10 @@ const initializeGameFromStart = useCallback(async (payload: any) => {
                 </div>
             </div>
 
-            {/* Player's hand (bottom) */}
             <div className="player-bottom">
                 <div className="player-info">
                     <div className="player-name">
-                        {myPlayer?.name ?? 'YOU'} (You)
+                        {myPlayer?.name ?? 'YOU'}
                         {currentTurn === myPlayerId && ' 🎯'}
                     </div>
                     <div style={{ fontSize: '0.8rem', color: '#aaa' }}>
