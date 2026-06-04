@@ -22,6 +22,13 @@ interface Player {
 }
 type GameMode = 'menu' | 'ai' | 'multiplayer'
 type MultiplayerState = 'lobby' | 'waiting' | 'playing'
+
+interface GameAction {
+    action: string
+    payload: any
+    timestamp: number
+    playerId: string
+}
 // #endregion
 
 // #region CARD CLASS
@@ -134,7 +141,6 @@ const audioManager = new AudioManager()
 const PUSHER_KEY     = '4de6e91a5e72dd9096db'
 const PUSHER_CLUSTER = 'ap1'
 
-// All Pusher HTTP API calls go through our own API route to avoid CORS
 async function pusherTrigger(channel: string, event: string, data: unknown) {
     try {
         const res = await fetch('/api/pusher', {
@@ -187,31 +193,15 @@ interface PusherChannel {
     unbind_all: () => void
 }
 
-interface GameStatePayload {
-    players: Player[]
-    deck: CardType[]
-    playPile: CardType[]
-    currentTurn: Player['id']
-    direction: 'clockwise' | 'counter-clockwise'
-    colorPickerOpen: boolean
-    gameOn: boolean
-    playerOrder: Player['id'][]
-}
-
-interface WinnerPayload {
-    winnerId: string
-    winnerName: string
+interface JoinPayload {
+    playerId: string
+    playerName: string
+    requestSlot?: boolean
 }
 
 interface SlotPayload {
     playerId: Player['id']
     allPlayers: { id: string; name: string }[]
-}
-
-interface JoinPayload {
-    playerId: string
-    playerName: string
-    requestSlot?: boolean
 }
 // #endregion
 
@@ -289,7 +279,6 @@ export default function UnoGame() {
     useEffect(() => { audioManager.init() }, [])
     // #endregion
 
-    // suppress unused warning for wildCardColor / selectedWildColor
     void wildCardColor
     void selectedWildColor
 
@@ -320,21 +309,172 @@ export default function UnoGame() {
         Math.floor(Math.random() * 500 + 1000), [])
     // #endregion
 
-    // #region BROADCAST
-    const broadcastGameState = useCallback(async (overrides?: Partial<GameStatePayload>) => {
+    // #region BROADCAST ACTION (NEW - Action-based sync)
+    const broadcastAction = useCallback(async (action: string, payload: any) => {
         if (gameModeRef.current !== 'multiplayer') return
+        if (!gameOnRef.current) return
+        
         const channel = `uno-room-${roomCodeRef.current}`
-        await pusherTrigger(channel, 'game-state', {
-            players:         overrides?.players         ?? playersRef.current,
-            deck:            overrides?.deck            ?? deckRef.current,
-            playPile:        overrides?.playPile        ?? playPileRef.current,
-            currentTurn:     overrides?.currentTurn     ?? currentTurnRef.current,
-            direction:       overrides?.direction       ?? directionRef.current,
-            colorPickerOpen: overrides?.colorPickerOpen ?? colorPickerRef.current,
-            gameOn:          overrides?.gameOn          ?? gameOnRef.current,
-            playerOrder:     overrides?.playerOrder     ?? playerOrderRef.current,
-        })
+        await pusherTrigger(channel, 'game-action', {
+            action,
+            payload,
+            timestamp: Date.now(),
+            playerId: myPlayerIdRef.current,
+        } as GameAction)
     }, [])
+
+    // Apply game action to local state
+    const applyGameAction = useCallback((gameAction: GameAction) => {
+        const { action, payload, playerId } = gameAction
+        
+        // Ignore own actions (already applied locally)
+        if (playerId === myPlayerIdRef.current) return
+        
+        console.log('Applying action:', action, payload)
+        
+        switch(action) {
+            case 'PLAY_CARD': {
+                const { cardIndex, card, newHand, newPlayPile, newDirection, nextTurn, colorChosen } = payload
+        
+                // Update play pile
+                const updatedPlayPile = [...playPileRef.current, card]
+                setPlayPile(updatedPlayPile)
+                playPileRef.current = updatedPlayPile
+        
+                // Update player's hand
+                const updatedPlayers = playersRef.current.map(p =>
+                    p.id === playerId ? { ...p, hand: newHand } : p
+                )
+                setPlayers(updatedPlayers)
+                playersRef.current = updatedPlayers
+        
+                // Update direction if changed
+                if (newDirection && newDirection !== directionRef.current) {
+                    setDirection(newDirection)
+                    directionRef.current = newDirection
+                }
+        
+                // Update turn
+                if (nextTurn) {
+                    setCurrentTurn(nextTurn)
+                    currentTurnRef.current = nextTurn
+                }
+        
+                // Handle color picker for wild cards
+                if (colorChosen) {
+                    setColorPickerOpen(true)
+                    colorPickerRef.current = true
+                    setWildCardColor(colorChosen)
+                    setSelectedWildColor(colorChosen)
+                    selectedWildColorRef.current = colorChosen
+                }
+        
+                // Check for UNO
+                if (newHand.length === 1) {
+                    triggerUno(playerId)
+                }
+                break
+            }
+        
+            case 'DRAW_CARD': {
+                const { newHand, newDeck, newPlayPile, nextTurn, drawnCard } = payload
+        
+                // Update player's hand
+                const updatedPlayers = playersRef.current.map(p =>
+                    p.id === playerId ? { ...p, hand: newHand } : p
+                )
+                setPlayers(updatedPlayers)
+                playersRef.current = updatedPlayers
+        
+                // Update deck and play pile
+                if (newDeck) {
+                    setDeckState(newDeck)
+                    deckRef.current = newDeck
+                }
+                if (newPlayPile) {
+                    setPlayPile(newPlayPile)
+                    playPileRef.current = newPlayPile
+                }
+        
+                // Update turn if specified
+                if (nextTurn) {
+                    setCurrentTurn(nextTurn)
+                    currentTurnRef.current = nextTurn
+                }
+        
+                // Play card sound
+                audioManager.play('drawCard')
+                break
+            }
+        
+            case 'COLOR_CHOSEN': {
+                const { color, newPlayPile, nextTurn } = payload
+        
+                // Update play pile with new color
+                const updatedPile = [...playPileRef.current]
+                updatedPile[updatedPile.length - 1] = { ...updatedPile[updatedPile.length - 1], color }
+                setPlayPile(updatedPile)
+                playPileRef.current = updatedPile
+        
+                setColorPickerOpen(false)
+                colorPickerRef.current = false
+                setWildCardColor(color)
+                setSelectedWildColor(color)
+                selectedWildColorRef.current = color
+        
+                if (nextTurn) {
+                    setCurrentTurn(nextTurn)
+                    currentTurnRef.current = nextTurn
+                }
+                break
+            }
+        
+            case 'UNO_SHOUT': {
+                triggerUno(playerId)
+                break
+            }
+        
+            case 'ROUND_WINNER': {
+                const { winnerId, winnerName, updatedPlayers } = payload
+                setRoundWinner(winnerId === myPlayerIdRef.current ? 'You' : winnerName)
+                setRoundVisible(true)
+                setGameOn(false)
+                gameOnRef.current = false
+        
+                // Update scores
+                if (updatedPlayers) {
+                    setPlayers(updatedPlayers)
+                    playersRef.current = updatedPlayers
+                }
+        
+                setTimeout(() => setRoundVisible(false), 3000)
+                break
+            }
+        
+            case 'GAME_WINNER': {
+                const { winnerId, winnerName } = payload
+                setGameWinner(winnerId === myPlayerIdRef.current ? 'You' : winnerName)
+                setGameVisible(true)
+                setGameOn(false)
+                gameOnRef.current = false
+                audioManager.play(winnerId === myPlayerIdRef.current ? 'winGame' : 'lose')
+                break
+            }
+        
+            case 'TURN_CHANGE': {
+                const { nextTurn, newDirection } = payload
+                if (nextTurn) {
+                    setCurrentTurn(nextTurn)
+                    currentTurnRef.current = nextTurn
+                }
+                if (newDirection) {
+                    setDirection(newDirection)
+                    directionRef.current = newDirection
+                }
+                break
+            }
+        }
+    }, [triggerUno])
     // #endregion
 
     // #region CHECK WINNER
@@ -361,9 +501,10 @@ export default function UnoGame() {
             setGameWinner(gameWinnerPlayer.id === myPlayerIdRef.current ? 'You' : gameWinnerPlayer.name)
             setGameVisible(true)
             audioManager.play(gameWinnerPlayer.id === myPlayerIdRef.current ? 'winGame' : 'lose')
+            
             if (gameModeRef.current === 'multiplayer') {
-                await pusherTrigger(`uno-room-${roomCodeRef.current}`, 'game-winner', {
-                    winnerId:   gameWinnerPlayer.id,
+                await broadcastAction('GAME_WINNER', {
+                    winnerId: gameWinnerPlayer.id,
                     winnerName: gameWinnerPlayer.name,
                 })
             }
@@ -373,66 +514,33 @@ export default function UnoGame() {
             setGameOn(false)
             gameOnRef.current = false
             audioManager.play('winRound')
+            
             if (gameModeRef.current === 'multiplayer') {
-                await pusherTrigger(`uno-room-${roomCodeRef.current}`, 'round-winner', {
-                    winnerId:   winner.id,
+                await broadcastAction('ROUND_WINNER', {
+                    winnerId: winner.id,
                     winnerName: winner.name,
+                    updatedPlayers: updatedPlayers.map(p => ({
+                        id: p.id,
+                        score: p.score,
+                        handSize: p.hand.length,
+                        name: p.name,
+                    })),
                 })
             }
+            
             if (gameModeRef.current === 'ai') {
                 setTimeout(() => setRoundVisible(false), 3000)
             }
         }
         return true
-    }, [tallyPoints])
+    }, [tallyPoints, broadcastAction])
     // #endregion
 
     // #region BIND CHANNEL EVENTS
     const bindChannelEvents = useCallback((channel: PusherChannel) => {
-        channel.bind('game-state', (raw: unknown) => {
-            const data = raw as GameStatePayload
-            setPlayers(data.players)
-            playersRef.current = data.players
-            setDeckState(data.deck)
-            deckRef.current = data.deck
-            setPlayPile(data.playPile)
-            playPileRef.current = data.playPile
-            setCurrentTurn(data.currentTurn)
-            currentTurnRef.current = data.currentTurn
-            setDirection(data.direction)
-            directionRef.current = data.direction
-            setColorPickerOpen(data.colorPickerOpen)
-            colorPickerRef.current = data.colorPickerOpen
-            setGameOn(data.gameOn)
-            gameOnRef.current = data.gameOn
-            if (data.playerOrder) {
-                setPlayerOrderState(data.playerOrder)
-                playerOrderRef.current = data.playerOrder
-            }
-            if (data.gameOn) setMpState('playing')
-        })
-
-        channel.bind('uno-shout', (raw: unknown) => {
-            const data = raw as { playerId: string }
-            triggerUno(data.playerId)
-        })
-
-        channel.bind('round-winner', (raw: unknown) => {
-            const data = raw as WinnerPayload
-            setRoundWinner(data.winnerId === myPlayerIdRef.current ? 'You' : data.winnerName)
-            setRoundVisible(true)
-            setGameOn(false)
-            gameOnRef.current = false
-            setTimeout(() => setRoundVisible(false), 3000)
-        })
-
-        channel.bind('game-winner', (raw: unknown) => {
-            const data = raw as WinnerPayload
-            setGameWinner(data.winnerId === myPlayerIdRef.current ? 'You' : data.winnerName)
-            setGameVisible(true)
-            setGameOn(false)
-            gameOnRef.current = false
-            audioManager.play(data.winnerId === myPlayerIdRef.current ? 'winGame' : 'lose')
+        channel.bind('game-action', (raw: unknown) => {
+            const gameAction = raw as GameAction
+            applyGameAction(gameAction)
         })
 
         channel.bind('player-joined', (raw: unknown) => {
@@ -458,7 +566,7 @@ export default function UnoGame() {
                 setMpConnectedPlayers(data.allPlayers)
             }
         })
-    }, [triggerUno])
+    }, [applyGameAction])
     // #endregion
 
     // #region CREATE ROOM
@@ -585,15 +693,23 @@ export default function UnoGame() {
 
         audioManager.play('shuffle')
 
-        await pusherTrigger(`uno-room-${roomCode}`, 'game-state', {
-            players:         newPlayers,
-            deck:            newDeck,
-            playPile:        newPlayPile,
-            currentTurn:     'player',
-            direction:       'clockwise',
-            colorPickerOpen: false,
-            gameOn:          true,
-            playerOrder:     order,
+        // Broadcast minimal start info - each client will initialize their own state
+        await pusherTrigger(`uno-room-${roomCode}`, 'game-started', {
+            playerOrder: order,
+            startCard: {
+                color: startCard?.color,
+                value: startCard?.value,
+                points: startCard?.points,
+                drawValue: startCard?.drawValue,
+                src: startCard?.src,
+            },
+            players: newPlayers.map(p => ({
+                id: p.id,
+                name: p.name,
+                position: p.position,
+                handSize: p.hand.length,
+                score: p.score,
+            })),
         })
     }, [isHost, mpConnectedPlayers, roomCode])
     // #endregion
@@ -643,7 +759,7 @@ export default function UnoGame() {
     }, [])
     // #endregion
 
-    // #region CPU LOGIC
+    // #region CPU LOGIC (same as before)
     const playCPU = useCallback(async (cpuId: Player['id']) => {
         if (currentTurnRef.current !== cpuId) return
         if (!gameOnRef.current)               return
@@ -674,7 +790,6 @@ export default function UnoGame() {
             canPlay ? playable.push(card) : remaining.push(card)
         }
 
-        // No playable card — draw
         if (playable.length === 0) {
             let newDeck     = [...currentDeck]
             let newPlayPile = [...currentPlayPile]
@@ -719,7 +834,6 @@ export default function UnoGame() {
             return
         }
 
-        // Choose best card
         let chosenCard: CardType
         let leftover:   CardType[]
 
@@ -738,7 +852,13 @@ export default function UnoGame() {
         const newPlayPile = [...currentPlayPile, { ...chosenCard, playedByPlayer: false }]
         const newCpuHand  = [...leftover]
 
-        // Wild colour
+        let newDir = currentDir
+        if (chosenCard.value === 10) {
+            newDir = currentDir === 'clockwise' ? 'counter-clockwise' : 'clockwise'
+            setDirection(newDir)
+            directionRef.current = newDir
+        }
+
         if (chosenCard.color === 'any' && chosenCard.drawValue === 0) {
             const colours = ['rgb(255, 6, 0)', 'rgb(0, 170, 69)', 'rgb(0, 150, 224)', 'rgb(255, 222, 0)']
             const picked  = colours[Math.floor(Math.random() * colours.length)]
@@ -748,15 +868,6 @@ export default function UnoGame() {
             selectedWildColorRef.current = picked
         }
 
-        // Reverse
-        let newDir = currentDir
-        if (chosenCard.value === 10) {
-            newDir = currentDir === 'clockwise' ? 'counter-clockwise' : 'clockwise'
-            setDirection(newDir)
-            directionRef.current = newDir
-        }
-
-        // Draw penalty
         if (chosenCard.drawValue > 0) {
             audioManager.play('plusCard')
             const nextId     = getNextTurn(cpuId, newDir, order)
@@ -795,7 +906,6 @@ export default function UnoGame() {
         if (newCpuHand.length === 1) triggerUno(cpuId)
         if (newCpuHand.length === 0) { await checkForWinner(); return }
 
-        // Skip
         let nextTurn: Player['id']
         if (chosenCard.value === 11) {
             nextTurn = getNextTurn(getNextTurn(cpuId, newDir, order), newDir, order)
@@ -807,7 +917,7 @@ export default function UnoGame() {
     }, [triggerUno, checkForWinner, getCpuDelay, getNextTurn])
     // #endregion
 
-    // #region PLAYER CARD CLICK
+    // #region PLAYER CARD CLICK (Modified for multiplayer)
     const handlePlayerCardClick = useCallback(async (index: number) => {
         if (currentTurnRef.current !== myPlayerIdRef.current) return
         if (colorPickerRef.current)                           return
@@ -856,13 +966,10 @@ export default function UnoGame() {
         if (newPlayerHand.length === 1) {
             triggerUno(myPlayerIdRef.current)
             if (gameModeRef.current === 'multiplayer') {
-                await pusherTrigger(`uno-room-${roomCodeRef.current}`, 'uno-shout', {
-                    playerId: myPlayerIdRef.current,
-                })
+                await broadcastAction('UNO_SHOUT', {})
             }
         }
 
-        // Draw penalty
         if (playedCard.drawValue > 0) {
             audioManager.play('plusCard')
             const nextId     = getNextTurn(myPlayerIdRef.current, newDir, order)
@@ -897,17 +1004,22 @@ export default function UnoGame() {
             return
         }
 
-        // Wild — open colour picker
+        // Broadcast the action to other players
+        if (gameModeRef.current === 'multiplayer') {
+            await broadcastAction('PLAY_CARD', {
+                cardIndex: index,
+                card: playedCard,
+                newHand: newPlayerHand,
+                newPlayPile: newPlayPile,
+                newDirection: newDir !== currentDir ? newDir : null,
+                nextTurn: null, // Will be set after color picker
+                colorChosen: null,
+            })
+        }
+
         if (playedCard.color === 'any' && playedCard.drawValue === 0) {
             setColorPickerOpen(true)
             colorPickerRef.current = true
-            if (gameModeRef.current === 'multiplayer') {
-                await broadcastGameState({
-                    players:         playersRef.current,
-                    playPile:        playPileRef.current,
-                    colorPickerOpen: true,
-                })
-            }
             return
         }
 
@@ -921,18 +1033,15 @@ export default function UnoGame() {
         currentTurnRef.current = nextTurn
 
         if (gameModeRef.current === 'multiplayer') {
-            await broadcastGameState({
-                players:     playersRef.current,
-                deck:        deckRef.current,
-                playPile:    playPileRef.current,
-                currentTurn: nextTurn,
-                direction:   newDir,
+            await broadcastAction('TURN_CHANGE', {
+                nextTurn,
+                newDirection: newDir !== currentDir ? newDir : null,
             })
         }
-    }, [triggerUno, checkForWinner, getNextTurn, broadcastGameState])
+    }, [triggerUno, checkForWinner, getNextTurn, broadcastAction])
     // #endregion
 
-    // #region DRAW PILE CLICK
+    // #region DRAW PILE CLICK (Modified for multiplayer)
     const handleDrawPileClick = useCallback(async () => {
         if (currentTurnRef.current !== myPlayerIdRef.current) return
         if (colorPickerRef.current)                           return
@@ -969,6 +1078,22 @@ export default function UnoGame() {
         setDeckState(newDeck);              deckRef.current     = newDeck
         setPlayPile(newPlayPile);           playPileRef.current = newPlayPile
 
+        if (gameModeRef.current === 'multiplayer') {
+            await broadcastAction('DRAW_CARD', {
+                newHand,
+                newDeck,
+                newPlayPile,
+                drawnCard: drawnCard ? {
+                    color: drawnCard.color,
+                    value: drawnCard.value,
+                    points: drawnCard.points,
+                    drawValue: drawnCard.drawValue,
+                    src: drawnCard.src,
+                } : null,
+                nextTurn: null,
+            })
+        }
+
         if (drawnCard) {
             const topCard = newPlayPile[newPlayPile.length - 1]
             const canPlay =
@@ -977,13 +1102,6 @@ export default function UnoGame() {
                 drawnCard.color === 'any'           ||
                 topCard.color   === 'any'
             if (canPlay) {
-                if (gameModeRef.current === 'multiplayer') {
-                    await broadcastGameState({
-                        players:  updatedPlayers,
-                        deck:     newDeck,
-                        playPile: newPlayPile,
-                    })
-                }
                 return
             }
         }
@@ -993,17 +1111,15 @@ export default function UnoGame() {
         currentTurnRef.current = nextTurn
 
         if (gameModeRef.current === 'multiplayer') {
-            await broadcastGameState({
-                players:     updatedPlayers,
-                deck:        newDeck,
-                playPile:    newPlayPile,
-                currentTurn: nextTurn,
+            await broadcastAction('TURN_CHANGE', {
+                nextTurn,
+                newDirection: null,
             })
         }
-    }, [getNextTurn, broadcastGameState])
+    }, [getNextTurn, broadcastAction])
     // #endregion
 
-    // #region COLOUR CHOSEN
+    // #region COLOUR CHOSEN (Modified for multiplayer)
     const handleColorChosen = useCallback(async (color: string) => {
         audioManager.play('colorButton')
         const order   = playerOrderRef.current
@@ -1020,13 +1136,18 @@ export default function UnoGame() {
         currentTurnRef.current = nextTurn
 
         if (gameModeRef.current === 'multiplayer') {
-            await broadcastGameState({
-                playPile:        newPile,
-                colorPickerOpen: false,
-                currentTurn:     nextTurn,
+            await broadcastAction('COLOR_CHOSEN', {
+                color,
+                newPlayPile: newPile,
+                nextTurn,
+            })
+            
+            await broadcastAction('TURN_CHANGE', {
+                nextTurn,
+                newDirection: null,
             })
         }
-    }, [getNextTurn, broadcastGameState])
+    }, [getNextTurn, broadcastAction])
     // #endregion
 
     // #region AUTO CPU TURN
@@ -1087,7 +1208,7 @@ export default function UnoGame() {
     // #endregion
 
     // =====================================================================
-    // #region MENU
+    // #region MENU (same as before)
     // =====================================================================
     if (gameMode === 'menu') {
         return (
@@ -1157,7 +1278,7 @@ export default function UnoGame() {
     // #endregion
 
     // =====================================================================
-    // #region MULTIPLAYER LOBBY
+    // #region MULTIPLAYER LOBBY (same as before)
     // =====================================================================
     if (gameMode === 'multiplayer' && mpState !== 'playing') {
         return (
@@ -1172,7 +1293,6 @@ export default function UnoGame() {
                     border: '2px solid rgba(33,150,243,0.4)',
                     backdropFilter: 'blur(10px)',
                 }}>
-                    {/* Back */}
                     <button
                         onClick={() => { setGameMode('menu'); setMpState('lobby'); setMpError('') }}
                         style={{
@@ -1193,7 +1313,6 @@ export default function UnoGame() {
                         🌐 Multiplayer
                     </h2>
 
-                    {/* ---- LOBBY ---- */}
                     {mpState === 'lobby' && (
                         <>
                             <div style={{ marginBottom: '1.2rem' }}>
@@ -1273,10 +1392,8 @@ export default function UnoGame() {
                         </>
                     )}
 
-                    {/* ---- WAITING ---- */}
                     {mpState === 'waiting' && (
                         <>
-                            {/* Room code display */}
                             <div style={{
                                 background: 'rgba(255,215,0,0.08)',
                                 border: '2px dashed rgba(255,215,0,0.5)',
@@ -1295,7 +1412,6 @@ export default function UnoGame() {
                                 </p>
                             </div>
 
-                            {/* Player list */}
                             <p style={{ color: '#ccc', marginBottom: '0.8rem' }}>
                                 Players ({mpConnectedPlayers.length}/{mpPlayerCount})
                             </p>
@@ -1330,7 +1446,6 @@ export default function UnoGame() {
                                 </div>
                             ))}
 
-                            {/* Host controls */}
                             {isHost && (
                                 <>
                                     <div style={{ margin: '1rem 0' }}>
@@ -1401,12 +1516,10 @@ export default function UnoGame() {
     // #endregion
 
     // =====================================================================
-    // #region GAME BOARD
+    // #region GAME BOARD (same as before)
     // =====================================================================
     return (
         <main className="game-container">
-
-            {/* Back to menu */}
             <button
                 onClick={() => {
                     setGameMode('menu')
@@ -1427,7 +1540,6 @@ export default function UnoGame() {
                 ← Menu
             </button>
 
-            {/* Mode badge */}
             <div style={{
                 position: 'fixed', top: '1rem', right: '1rem', zIndex: 200,
                 background: gameMode === 'ai'
@@ -1440,7 +1552,6 @@ export default function UnoGame() {
                 {gameMode === 'ai' ? '🤖 vs AI' : `🌐 ${roomCode}`}
             </div>
 
-            {/* OTHER PLAYERS */}
             {otherPlayers.map(op => {
                 const isVertical = op.position === 'left' || op.position === 'right'
                 const isMyTurn   = currentTurn === op.id
@@ -1493,7 +1604,6 @@ export default function UnoGame() {
                 )
             })}
 
-            {/* CENTER AREA */}
             <div className="center-area">
                 <div className="turn-indicator">
                     <p className="turn-text">
@@ -1524,7 +1634,6 @@ export default function UnoGame() {
                 </div>
 
                 <div className="table-cards">
-                    {/* Play pile */}
                     <div className="play-pile">
                         {topCard && (
                             <Image
@@ -1541,7 +1650,6 @@ export default function UnoGame() {
                         )}
                     </div>
 
-                    {/* Draw pile */}
                     <div
                         className="draw-pile"
                         onClick={handleDrawPileClick}
@@ -1557,7 +1665,6 @@ export default function UnoGame() {
                     </div>
                 </div>
 
-                {/* Score strip */}
                 <div style={{
                     display: 'flex', gap: '1.2rem', flexWrap: 'wrap',
                     justifyContent: 'center', marginTop: '0.8rem',
@@ -1576,7 +1683,6 @@ export default function UnoGame() {
                 </div>
             </div>
 
-            {/* PLAYER HAND */}
             <div className="player-bottom">
                 <div className="player-info">
                     <div className="player-name">
@@ -1628,7 +1734,6 @@ export default function UnoGame() {
                 )}
             </div>
 
-            {/* COLOUR PICKER */}
             {colorPickerOpen && currentTurn === myPlayerId && (
                 <div className="color-picker">
                     <p>🎨 SELECT A COLOR 🎨</p>
@@ -1649,7 +1754,6 @@ export default function UnoGame() {
                 </div>
             )}
 
-            {/* ROUND END */}
             {roundVisible && (
                 <div className="end-of-round">
                     <p>🏆 {roundWinner} won the round!</p>
@@ -1674,7 +1778,6 @@ export default function UnoGame() {
                 </div>
             )}
 
-            {/* GAME OVER */}
             {gameVisible && (
                 <div className="end-of-game">
                     <p>🎉 {gameWinner} won the game!</p>
