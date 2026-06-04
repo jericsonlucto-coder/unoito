@@ -309,7 +309,7 @@ export default function UnoGame() {
         Math.floor(Math.random() * 500 + 1000), [])
     // #endregion
 
-    // #region BROADCAST ACTION (NEW - Action-based sync)
+    // #region BROADCAST ACTION
     const broadcastAction = useCallback(async (action: string, payload: any) => {
         if (gameModeRef.current !== 'multiplayer') return
         if (!gameOnRef.current) return
@@ -334,7 +334,7 @@ export default function UnoGame() {
         
         switch(action) {
             case 'PLAY_CARD': {
-                const { cardIndex, card, newHand, newPlayPile, newDirection, nextTurn, colorChosen } = payload
+                const { card, newHand, newPlayPile, newDirection, nextTurn, colorChosen } = payload
         
                 // Update play pile
                 const updatedPlayPile = [...playPileRef.current, card]
@@ -377,7 +377,7 @@ export default function UnoGame() {
             }
         
             case 'DRAW_CARD': {
-                const { newHand, newDeck, newPlayPile, nextTurn, drawnCard } = payload
+                const { newHand, newDeck, newPlayPile, nextTurn } = payload
         
                 // Update player's hand
                 const updatedPlayers = playersRef.current.map(p =>
@@ -477,6 +477,73 @@ export default function UnoGame() {
     }, [triggerUno])
     // #endregion
 
+    // #region INITIALIZE GAME FROM START (for non-host players)
+    const initializeGameFromStart = useCallback(async (payload: any) => {
+        console.log('Initializing game from start:', payload)
+        const { playerOrder, startCard, players: playerInfo } = payload
+        
+        // Set up player order
+        setPlayerOrderState(playerOrder)
+        playerOrderRef.current = playerOrder
+        
+        // Create and shuffle deck locally
+        let newDeck = createDeck()
+        newDeck = shuffleDeck(newDeck)
+        
+        // Initialize players with correct IDs and names
+        const initializedPlayers: Player[] = playerInfo.map((info: any, index: number) => ({
+            id: info.id as Player['id'],
+            hand: [],
+            score: info.score || 0,
+            position: ['bottom', 'top', 'left', 'right'][index] as Player['position'],
+            name: info.name,
+            isHuman: true,
+        }))
+        
+        // Deal 7 cards to each player
+        for (let i = 0; i < 7; i++) {
+            for (let j = 0; j < initializedPlayers.length; j++) {
+                if (newDeck.length > 0) {
+                    initializedPlayers[j].hand.push(newDeck.shift()!)
+                }
+            }
+        }
+        
+        // Create play pile with start card
+        let startCardObj: CardType | null = null
+        if (startCard) {
+            startCardObj = new Card(
+                startCard.color,
+                startCard.value,
+                startCard.points,
+                startCard.value === 0 || (startCard.value >= 1 && startCard.value <= 9),
+                startCard.drawValue,
+                startCard.src
+            )
+        }
+        
+        const newPlayPile = startCardObj ? [startCardObj] : []
+        
+        // Update all state
+        setPlayers(initializedPlayers)
+        playersRef.current = initializedPlayers
+        setDeckState(newDeck)
+        deckRef.current = newDeck
+        setPlayPile(newPlayPile)
+        playPileRef.current = newPlayPile
+        setCurrentTurn('player')
+        currentTurnRef.current = 'player'
+        setDirection('clockwise')
+        directionRef.current = 'clockwise'
+        setGameOn(true)
+        gameOnRef.current = true
+        setColorPickerOpen(false)
+        colorPickerRef.current = false
+        setMpState('playing')
+        
+        audioManager.play('shuffle')
+    }, [])
+
     // #region CHECK WINNER
     const checkForWinner = useCallback(async (currentPlayers?: Player[]) => {
         const cp = currentPlayers ?? playersRef.current
@@ -536,11 +603,18 @@ export default function UnoGame() {
     }, [tallyPoints, broadcastAction])
     // #endregion
 
-    // #region BIND CHANNEL EVENTS
+    // #region BIND CHANNEL EVENTS (Updated with game-started)
     const bindChannelEvents = useCallback((channel: PusherChannel) => {
         channel.bind('game-action', (raw: unknown) => {
             const gameAction = raw as GameAction
             applyGameAction(gameAction)
+        })
+
+        // Handle game-started event
+        channel.bind('game-started', (raw: unknown) => {
+            const payload = raw as any
+            console.log('Received game-started event:', payload)
+            initializeGameFromStart(payload)
         })
 
         channel.bind('player-joined', (raw: unknown) => {
@@ -566,7 +640,7 @@ export default function UnoGame() {
                 setMpConnectedPlayers(data.allPlayers)
             }
         })
-    }, [applyGameAction])
+    }, [applyGameAction, initializeGameFromStart])
     // #endregion
 
     // #region CREATE ROOM
@@ -625,7 +699,7 @@ export default function UnoGame() {
         if (!isHost || !mpChannel || gameMode !== 'multiplayer') return
         const slots: Player['id'][] = ['p2', 'p3', 'p4']
 
-        mpChannel.bind('player-joined', async (raw: unknown) => {
+        const handlePlayerJoined = async (raw: unknown) => {
             const data = raw as JoinPayload
             if (!data.requestSlot) return
             const usedIds       = mpConnectedRef.current.map(p => p.id)
@@ -640,11 +714,17 @@ export default function UnoGame() {
                 playerId:   availableSlot,
                 allPlayers: newConnected,
             })
-        })
+        }
+
+        mpChannel.bind('player-joined', handlePlayerJoined)
+        
+        return () => {
+            mpChannel.unbind_all()
+        }
     }, [isHost, mpChannel, gameMode])
     // #endregion
 
-    // #region START MULTIPLAYER GAME
+    // #region START MULTIPLAYER GAME (Updated)
     const startMultiplayerGame = useCallback(async () => {
         if (!isHost) return
         if (mpConnectedPlayers.length < 2) { setMpError('Need at least 2 players'); return }
@@ -681,6 +761,7 @@ export default function UnoGame() {
         }
         const newPlayPile = startCard ? [startCard] : []
 
+        // Update host state
         setPlayers(newPlayers);             playersRef.current     = newPlayers
         setDeckState(newDeck);              deckRef.current        = newDeck
         setPlayPile(newPlayPile);           playPileRef.current    = newPlayPile
@@ -689,28 +770,30 @@ export default function UnoGame() {
         setPlayerOrderState(order);         playerOrderRef.current = order
         setGameOn(true);                    gameOnRef.current      = true
         setColorPickerOpen(false);          colorPickerRef.current = false
-        setMpState('playing')
+        setMpState('playing')  // Host transitions to playing
 
         audioManager.play('shuffle')
 
-        // Broadcast minimal start info - each client will initialize their own state
-        await pusherTrigger(`uno-room-${roomCode}`, 'game-started', {
+        // Broadcast game start to all players
+        const gameStartPayload = {
             playerOrder: order,
-            startCard: {
-                color: startCard?.color,
-                value: startCard?.value,
-                points: startCard?.points,
-                drawValue: startCard?.drawValue,
-                src: startCard?.src,
-            },
+            startCard: startCard ? {
+                color: startCard.color,
+                value: startCard.value,
+                points: startCard.points,
+                drawValue: startCard.drawValue,
+                src: startCard.src,
+            } : null,
             players: newPlayers.map(p => ({
                 id: p.id,
                 name: p.name,
-                position: p.position,
-                handSize: p.hand.length,
                 score: p.score,
+                handSize: p.hand.length,
             })),
-        })
+        }
+        
+        console.log('Broadcasting game-started:', gameStartPayload)
+        await pusherTrigger(`uno-room-${roomCode}`, 'game-started', gameStartPayload)
     }, [isHost, mpConnectedPlayers, roomCode])
     // #endregion
 
@@ -759,7 +842,7 @@ export default function UnoGame() {
     }, [])
     // #endregion
 
-    // #region CPU LOGIC (same as before)
+    // #region CPU LOGIC
     const playCPU = useCallback(async (cpuId: Player['id']) => {
         if (currentTurnRef.current !== cpuId) return
         if (!gameOnRef.current)               return
@@ -917,7 +1000,7 @@ export default function UnoGame() {
     }, [triggerUno, checkForWinner, getCpuDelay, getNextTurn])
     // #endregion
 
-    // #region PLAYER CARD CLICK (Modified for multiplayer)
+    // #region PLAYER CARD CLICK
     const handlePlayerCardClick = useCallback(async (index: number) => {
         if (currentTurnRef.current !== myPlayerIdRef.current) return
         if (colorPickerRef.current)                           return
@@ -1004,19 +1087,6 @@ export default function UnoGame() {
             return
         }
 
-        // Broadcast the action to other players
-        if (gameModeRef.current === 'multiplayer') {
-            await broadcastAction('PLAY_CARD', {
-                cardIndex: index,
-                card: playedCard,
-                newHand: newPlayerHand,
-                newPlayPile: newPlayPile,
-                newDirection: newDir !== currentDir ? newDir : null,
-                nextTurn: null, // Will be set after color picker
-                colorChosen: null,
-            })
-        }
-
         if (playedCard.color === 'any' && playedCard.drawValue === 0) {
             setColorPickerOpen(true)
             colorPickerRef.current = true
@@ -1033,15 +1103,19 @@ export default function UnoGame() {
         currentTurnRef.current = nextTurn
 
         if (gameModeRef.current === 'multiplayer') {
-            await broadcastAction('TURN_CHANGE', {
-                nextTurn,
+            await broadcastAction('PLAY_CARD', {
+                card: playedCard,
+                newHand: newPlayerHand,
+                newPlayPile: newPlayPile,
                 newDirection: newDir !== currentDir ? newDir : null,
+                nextTurn,
+                colorChosen: null,
             })
         }
     }, [triggerUno, checkForWinner, getNextTurn, broadcastAction])
     // #endregion
 
-    // #region DRAW PILE CLICK (Modified for multiplayer)
+    // #region DRAW PILE CLICK
     const handleDrawPileClick = useCallback(async () => {
         if (currentTurnRef.current !== myPlayerIdRef.current) return
         if (colorPickerRef.current)                           return
@@ -1083,13 +1157,6 @@ export default function UnoGame() {
                 newHand,
                 newDeck,
                 newPlayPile,
-                drawnCard: drawnCard ? {
-                    color: drawnCard.color,
-                    value: drawnCard.value,
-                    points: drawnCard.points,
-                    drawValue: drawnCard.drawValue,
-                    src: drawnCard.src,
-                } : null,
                 nextTurn: null,
             })
         }
@@ -1119,7 +1186,7 @@ export default function UnoGame() {
     }, [getNextTurn, broadcastAction])
     // #endregion
 
-    // #region COLOUR CHOSEN (Modified for multiplayer)
+    // #region COLOUR CHOSEN
     const handleColorChosen = useCallback(async (color: string) => {
         audioManager.play('colorButton')
         const order   = playerOrderRef.current
@@ -1140,11 +1207,6 @@ export default function UnoGame() {
                 color,
                 newPlayPile: newPile,
                 nextTurn,
-            })
-            
-            await broadcastAction('TURN_CHANGE', {
-                nextTurn,
-                newDirection: null,
             })
         }
     }, [getNextTurn, broadcastAction])
@@ -1208,7 +1270,7 @@ export default function UnoGame() {
     // #endregion
 
     // =====================================================================
-    // #region MENU (same as before)
+    // #region MENU
     // =====================================================================
     if (gameMode === 'menu') {
         return (
@@ -1278,7 +1340,7 @@ export default function UnoGame() {
     // #endregion
 
     // =====================================================================
-    // #region MULTIPLAYER LOBBY (same as before)
+    // #region MULTIPLAYER LOBBY
     // =====================================================================
     if (gameMode === 'multiplayer' && mpState !== 'playing') {
         return (
@@ -1516,7 +1578,7 @@ export default function UnoGame() {
     // #endregion
 
     // =====================================================================
-    // #region GAME BOARD (same as before)
+    // #region GAME BOARD
     // =====================================================================
     return (
         <main className="game-container">
