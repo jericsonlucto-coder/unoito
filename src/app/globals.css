@@ -1,3 +1,4 @@
+css
 /* globals.css - Complete CSS for 2-4 Player Uno Game */
 
 *,
@@ -68,24 +69,6 @@ body {
     transform: translateY(-50%);
 }
 
-/* For 2 players only - both at top and bottom */
-@media (min-width: 969px) {
-    body[data-player-count="2"] .cpu-left,
-    body[data-player-count="2"] .cpu-right {
-        display: flex;
-    }
-    
-    body[data-player-count="2"] .cpu-left {
-        left: 50%;
-        top: 20px;
-        transform: translateX(-50%);
-    }
-    
-    body[data-player-count="2"] .cpu-right {
-        display: none;
-    }
-}
-
 .cpu-info, .player-info {
     background: rgba(0, 0, 0, 0.8);
     padding: 0.8rem 1.5rem;
@@ -100,12 +83,6 @@ body {
     font-weight: bold;
     color: #ffd700;
     letter-spacing: 1px;
-}
-
-.cpu-score, .player-score {
-    font-size: 1.2rem;
-    color: white;
-    margin-top: 0.3rem;
 }
 
 /* CPU Horizontal Hand (Top position) */
@@ -975,16 +952,18 @@ body {
 @media (min-width: 969px) {
     /* For 4 players - all positions visible */
     body[data-player-count="4"] .cpu-left,
-    body[data-player-count="4"] .cpu-right {
+    body[data-player-count="4"] .cpu-right,
+    body[data-player-count="4"] .cpu-top {
         display: flex;
     }
     
-    /* For 3 players - left and top visible, right hidden */
-    body[data-player-count="3"] .cpu-left {
-        display: flex;
-    }
-    
+    /* For 3 players - left and right visible, top hidden */
+    body[data-player-count="3"] .cpu-left,
     body[data-player-count="3"] .cpu-right {
+        display: flex;
+    }
+    
+    body[data-player-count="3"] .cpu-top {
         display: none;
     }
     
@@ -992,6 +971,10 @@ body {
     body[data-player-count="2"] .cpu-left,
     body[data-player-count="2"] .cpu-right {
         display: none;
+    }
+    
+    body[data-player-count="2"] .cpu-top {
+        display: flex;
     }
 }
 
