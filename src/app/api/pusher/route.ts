@@ -59,12 +59,20 @@ export async function POST(req: NextRequest) {
             )
         }
 
-        const bodyString = JSON.stringify(data)
         const timestamp = Math.floor(Date.now() / 1000).toString()
         const path = `/apps/${PUSHER_APP_ID}/events`
-        const bodyMd5 = await computeMd5(bodyString)
+        
+        // IMPORTANT: Create the exact JSON string that will be sent to Pusher
+        const pusherBody = JSON.stringify({
+            channel: channel,
+            name: event,
+            data: data,
+        })
+        
+        // Compute MD5 on the EXACT body that will be sent
+        const bodyMd5 = await computeMd5(pusherBody)
 
-        // IMPORTANT: Only include auth params, NOT channel/name
+        // Only include auth params in query string
         const paramString = [
             `auth_key=${PUSHER_KEY}`,
             `auth_timestamp=${timestamp}`,
@@ -83,14 +91,13 @@ export async function POST(req: NextRequest) {
             auth_signature: signature,
         })
 
-        // The channel and name go in the BODY, not the URL
-        const pusherBody = JSON.stringify({
-            channel: channel,
-            name: event,
-            data: data,
-        })
-
         const url = `https://api-${PUSHER_CLUSTER}.pusher.com${path}?${params}`
+
+        console.log('Sending to Pusher:', {
+            url,
+            body: pusherBody,
+            bodyMd5
+        })
 
         const pusherRes = await fetch(url, {
             method: 'POST',
