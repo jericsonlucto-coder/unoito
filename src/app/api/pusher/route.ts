@@ -62,11 +62,14 @@ export async function POST(req: NextRequest) {
         const timestamp = Math.floor(Date.now() / 1000).toString()
         const path = `/apps/${PUSHER_APP_ID}/events`
         
-        // IMPORTANT: Create the exact JSON string that will be sent to Pusher
+        // IMPORTANT: data must be a JSON string, not an object
+        const dataString = JSON.stringify(data)
+        
+        // Create the exact JSON string that will be sent to Pusher
         const pusherBody = JSON.stringify({
             channel: channel,
             name: event,
-            data: data,
+            data: dataString,  // Send as string, not object
         })
         
         // Compute MD5 on the EXACT body that will be sent
