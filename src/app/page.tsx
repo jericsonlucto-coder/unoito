@@ -344,14 +344,11 @@ export default function UnoGame() {
             case 'PLAY_CARD': {
                 const { card, newHand, newPlayPile, newDirection, nextTurn, colorChosen, drawAmount, drawnCards, drawTargetPlayer, updatedPlayers: receivedUpdatedPlayers } = payload
 
-                // Don't add the card again if it's already in the play pile from newPlayPile
                 let updatedPlayPile = [...playPileRef.current]
                 
                 if (newPlayPile && newPlayPile.length > 0) {
-                    // Use the complete newPlayPile if provided
                     updatedPlayPile = newPlayPile
                 } else if (card) {
-                    // Otherwise add the card to the existing pile
                     updatedPlayPile.push(card)
                 }
                 
@@ -376,7 +373,6 @@ export default function UnoGame() {
                             )
                         )
                         
-                        // For Wild Card (value 13), preserve the local hand if it exists
                         if (p.id === myPlayerIdRef.current && existingPlayer && card && card.value === 13 && existingPlayer.hand.length > handToUse.length) {
                             console.log(`Preserving local hand for ${p.id} (Wild Card case): ${existingPlayer.hand.length} vs received ${handToUse.length}`)
                             handToUse = existingPlayer.hand
@@ -436,7 +432,6 @@ export default function UnoGame() {
                 }
 
                 if (newHand && newHand.length === 1 && card && card.value !== 13) {
-                    // Only trigger UNO for non-wild cards since wild card color picker hasn't been resolved yet
                     triggerUno(playerId)
                 }
                 break
@@ -806,7 +801,7 @@ export default function UnoGame() {
     }, [tallyPoints, broadcastAction])
     // #endregion
 
-    // #region BIND CHANNEL EVENTS
+    // #region BIND CHANNEL EVENTS - UPDATED
     const bindChannelEvents = useCallback((channel: PusherChannel) => {
         channel.bind('game-action', (raw: unknown) => {
             const gameAction = raw as GameAction
@@ -825,6 +820,7 @@ export default function UnoGame() {
             setMpConnectedPlayers(prev => {
                 const exists = prev.find(p => p.id === data.playerId || p.name === data.playerName)
                 if (exists) return prev
+                console.log('Adding player to list:', data.playerName)
                 return [...prev, { id: data.playerId, name: data.playerName }]
             })
         })
@@ -832,7 +828,11 @@ export default function UnoGame() {
         channel.bind('player-left', (raw: unknown) => {
             const data = raw as { playerId: string; playerName?: string }
             console.log('Player left:', data)
-            setMpConnectedPlayers(prev => prev.filter(p => p.id !== data.playerId))
+            setMpConnectedPlayers(prev => {
+                const filtered = prev.filter(p => p.id !== data.playerId && p.name !== data.playerName)
+                console.log('Players after removal:', filtered)
+                return filtered
+            })
             setMpError('')
         })
 
@@ -852,9 +852,21 @@ export default function UnoGame() {
                 const uniquePlayers = Array.from(
                     new Map(data.allPlayers.map(p => [p.name, p])).values()
                 )
+                console.log('Setting connected players from slot-assigned:', uniquePlayers)
                 setMpConnectedPlayers(uniquePlayers)
                 mpConnectedRef.current = uniquePlayers
-                console.log('Connected players updated (unique):', uniquePlayers)
+            }
+        })
+        
+        channel.bind('players-updated', (raw: unknown) => {
+            const data = raw as { allPlayers: { id: string; name: string }[] }
+            console.log('Players updated event received (non-host):', data)
+            if (data.allPlayers) {
+                const uniquePlayers = Array.from(
+                    new Map(data.allPlayers.map(p => [p.name, p])).values()
+                )
+                setMpConnectedPlayers(uniquePlayers)
+                mpConnectedRef.current = uniquePlayers
             }
         })
     }, [applyGameAction, initializeGameFromStart])
@@ -899,7 +911,7 @@ export default function UnoGame() {
     }, [myPlayerName, bindChannelEvents])
     // #endregion
 
-    // #region JOIN ROOM
+    // #region JOIN ROOM - UPDATED
     const joinRoom = useCallback(async () => {
         if (!myPlayerName.trim())  { setMpError('Please enter your name');   return }
         if (!inputRoomCode.trim()) { setMpError('Please enter a room code'); return }
@@ -924,6 +936,14 @@ export default function UnoGame() {
 
             bindChannelEvents(channel)
 
+            setMpConnectedPlayers(prev => {
+                const exists = prev.find(p => p.name === myPlayerName)
+                if (!exists) {
+                    return [...prev, { id: tempId, name: myPlayerName }]
+                }
+                return prev
+            })
+
             await pusherTrigger(`uno-room-${code}`, 'player-joined', {
                 playerId:    tempId,
                 playerName:  myPlayerName,
@@ -943,12 +963,12 @@ export default function UnoGame() {
     }, [myPlayerName, inputRoomCode, bindChannelEvents])
     // #endregion
 
-    // #region HOST ASSIGNS SLOT
+    // #region HOST ASSIGNS SLOT - UPDATED
     useEffect(() => {
         if (!isHost || !mpChannel || gameMode !== 'multiplayer') return
         
         const availableSlots: Player['id'][] = ['player', 'p2', 'p3', 'p4']
-        let assignedSlots: string[] = []
+        const assignedSlots: string[] = []
         
         const hostSlot = 'player'
         assignedSlots.push(hostSlot)
@@ -956,51 +976,106 @@ export default function UnoGame() {
         console.log('Host assigned to slot:', hostSlot)
         console.log('Available slots for players:', availableSlots.filter(s => !assignedSlots.includes(s)))
 
+        const pendingJoins = new Set<string>()
+
         const handlePlayerJoined = async (raw: unknown) => {
             const data = raw as JoinPayload
             if (!data.requestSlot) return
             
             console.log('Processing player join request:', data)
             
-            const existingPlayer = mpConnectedRef.current.find(p => p.name === data.playerName)
-            if (existingPlayer) {
-                console.log('Player with this name already exists:', data.playerName)
+            if (pendingJoins.has(data.playerId)) {
+                console.log('Already processing join for:', data.playerId)
                 return
             }
+            pendingJoins.add(data.playerId)
             
-            const nextSlot = availableSlots.find(slot => !assignedSlots.includes(slot))
-            
-            if (!nextSlot) {
-                console.log('No available slots for player:', data.playerName)
-                setMpError('Room is full! Max 4 players allowed.')
-                return
-            }
-            
-            assignedSlots.push(nextSlot)
-            
-            console.log(`Assigning player ${data.playerName} (temp ID: ${data.playerId}) to slot:`, nextSlot)
-            console.log(`Remaining slots:`, availableSlots.filter(s => !assignedSlots.includes(s)))
-            
-            const newConnected = [...mpConnectedRef.current, { id: nextSlot, name: data.playerName }]
-            setMpConnectedPlayers(newConnected)
-            mpConnectedRef.current = newConnected
+            try {
+                const existingPlayer = mpConnectedRef.current.find(p => p.name === data.playerName)
+                if (existingPlayer) {
+                    console.log('Player with this name already exists:', data.playerName)
+                    return
+                }
+                
+                const nextSlot = availableSlots.find(slot => !assignedSlots.includes(slot))
+                
+                if (!nextSlot) {
+                    console.log('No available slots for player:', data.playerName)
+                    setMpError('Room is full! Max 4 players allowed.')
+                    return
+                }
+                
+                assignedSlots.push(nextSlot)
+                
+                console.log(`Assigning player ${data.playerName} to slot:`, nextSlot)
+                console.log(`Remaining slots:`, availableSlots.filter(s => !assignedSlots.includes(s)))
+                
+                const newPlayer = { id: nextSlot, name: data.playerName }
+                
+                const newConnected = [...mpConnectedRef.current]
+                const alreadyExists = newConnected.find(p => p.name === data.playerName)
+                if (!alreadyExists) {
+                    newConnected.push(newPlayer)
+                    setMpConnectedPlayers(newConnected)
+                    mpConnectedRef.current = newConnected
+                    console.log('Updated connected players:', newConnected)
+                }
 
-            const slotPayload = {
-                playerId:   nextSlot,
-                playerName: data.playerName,
-                allPlayers: newConnected,
+                const slotPayload = {
+                    playerId: nextSlot,
+                    playerName: data.playerName,
+                    allPlayers: newConnected,
+                }
+                console.log('Sending slot-assigned payload:', slotPayload)
+                
+                await pusherTrigger(`uno-room-${roomCodeRef.current}`, 'slot-assigned', slotPayload)
+                
+                await pusherTrigger(`uno-room-${roomCodeRef.current}`, 'players-updated', {
+                    allPlayers: newConnected
+                })
+            } catch (error) {
+                console.error('Error handling player join:', error)
+            } finally {
+                pendingJoins.delete(data.playerId)
             }
-            console.log('Sending slot-assigned payload:', slotPayload)
-            
-            await pusherTrigger(`uno-room-${roomCodeRef.current}`, 'slot-assigned', slotPayload)
         }
 
         mpChannel.bind('player-joined', handlePlayerJoined)
+        
+        mpChannel.bind('players-updated', (raw: unknown) => {
+            const data = raw as { allPlayers: { id: string; name: string }[] }
+            console.log('Players updated event received:', data)
+            if (data.allPlayers) {
+                const uniquePlayers = Array.from(
+                    new Map(data.allPlayers.map(p => [p.name, p])).values()
+                )
+                setMpConnectedPlayers(uniquePlayers)
+                mpConnectedRef.current = uniquePlayers
+                console.log('Connected players updated from broadcast:', uniquePlayers)
+            }
+        })
         
         return () => {
             mpChannel.unbind_all()
         }
     }, [isHost, mpChannel, gameMode])
+    // #endregion
+
+    // #region SYNC PLAYER LIST
+    useEffect(() => {
+        if (!isHost || !mpChannel || gameMode !== 'multiplayer' || mpState !== 'waiting') return
+        
+        const syncInterval = setInterval(() => {
+            if (mpConnectedRef.current.length > 0) {
+                console.log('Syncing player list...')
+                pusherTrigger(`uno-room-${roomCodeRef.current}`, 'players-updated', {
+                    allPlayers: mpConnectedRef.current
+                }).catch(console.error)
+            }
+        }, 5000)
+        
+        return () => clearInterval(syncInterval)
+    }, [isHost, mpChannel, gameMode, mpState])
     // #endregion
 
     // #region HANDLE PAGE LEAVE/CLEANUP
@@ -1520,16 +1595,14 @@ export default function UnoGame() {
             return
         }
 
-        // Handle Wild Card (value 13) - show color picker, broadcast card first
         if (playedCard.color === 'any' && playedCard.value === 13) {
-            // First broadcast that the card is played (without color yet)
             if (gameModeRef.current === 'multiplayer') {
                 await broadcastAction('PLAY_CARD', {
                     card: playedCard,
                     newHand: newPlayerHand,
                     newPlayPile: newPlayPile,
                     newDirection: newDir !== currentDir ? newDir : null,
-                    nextTurn: null, // Don't change turn yet - wait for color
+                    nextTurn: null,
                     drawAmount: playedCard.drawValue,
                     drawTargetPlayer: null,
                     updatedPlayers: updatedPlayers.map(p => ({
@@ -1610,14 +1683,12 @@ export default function UnoGame() {
         currentTurnRef.current = nextTurn
 
         if (gameModeRef.current === 'multiplayer') {
-            // Broadcast color chosen AND turn change together
             await broadcastAction('COLOR_CHOSEN', { 
                 color, 
                 nextTurn,
                 newPlayPile: newPile
             })
             
-            // Also broadcast turn change to ensure all players know whose turn it is
             await broadcastAction('TURN_CHANGE', { nextTurn })
         }
     }, [getNextTurn, broadcastAction])
