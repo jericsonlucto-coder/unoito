@@ -261,6 +261,7 @@ export default function UnoGame() {
     const roomCodeRef          = useRef(roomCode)
     const playerOrderRef       = useRef(playerOrderState)
     const mpConnectedRef       = useRef(mpConnectedPlayers)
+    const joiningRef           = useRef(false)
 
     useEffect(() => { gameOnRef.current            = gameOn },            [gameOn])
     useEffect(() => { playersRef.current           = players },           [players])
@@ -494,7 +495,6 @@ export default function UnoGame() {
                 } else {
                     const updatedPile = [...playPileRef.current]
                     const lastCard = updatedPile[updatedPile.length - 1]
-                    // Only update color for Wild Card (value 13)
                     if (lastCard.value === 13) {
                         updatedPile[updatedPile.length - 1] = { ...lastCard, color }
                     }
@@ -816,14 +816,19 @@ export default function UnoGame() {
             const data = raw as JoinPayload
             console.log('Player joined:', data)
             setMpConnectedPlayers(prev => {
-                if (prev.find(p => p.id === data.playerId)) return prev
+                // Check if player already exists (by ID or name) to prevent duplicates
+                const exists = prev.find(p => p.id === data.playerId || p.name === data.playerName)
+                if (exists) return prev
                 return [...prev, { id: data.playerId, name: data.playerName }]
             })
         })
 
         channel.bind('player-left', (raw: unknown) => {
-            const data = raw as { playerId: string }
+            const data = raw as { playerId: string; playerName?: string }
+            console.log('Player left:', data)
             setMpConnectedPlayers(prev => prev.filter(p => p.id !== data.playerId))
+            // Clear error if any
+            setMpError('')
         })
 
         channel.bind('slot-assigned', (raw: unknown) => {
@@ -839,9 +844,13 @@ export default function UnoGame() {
             }
             
             if (data.allPlayers) {
-                setMpConnectedPlayers(data.allPlayers)
-                mpConnectedRef.current = data.allPlayers
-                console.log('Connected players updated:', data.allPlayers)
+                // Remove duplicates by using a Map
+                const uniquePlayers = Array.from(
+                    new Map(data.allPlayers.map(p => [p.name, p])).values()
+                )
+                setMpConnectedPlayers(uniquePlayers)
+                mpConnectedRef.current = uniquePlayers
+                console.log('Connected players updated (unique):', uniquePlayers)
             }
         })
     }, [applyGameAction, initializeGameFromStart])
@@ -850,29 +859,39 @@ export default function UnoGame() {
     // #region CREATE ROOM
     const createRoom = useCallback(async () => {
         if (!myPlayerName.trim()) { setMpError('Please enter your name'); return }
-        const code = generateRoomCode()
-        setRoomCode(code)
-        roomCodeRef.current = code
-        setIsHost(true)
+        if (joiningRef.current) return
         
-        const hostId = 'player'
-        setMyPlayerId(hostId)
-        myPlayerIdRef.current = hostId
-        myPlayerNameRef.current = myPlayerName
+        joiningRef.current = true
+        try {
+            const code = generateRoomCode()
+            setRoomCode(code)
+            roomCodeRef.current = code
+            setIsHost(true)
+            
+            const hostId = 'player'
+            setMyPlayerId(hostId)
+            myPlayerIdRef.current = hostId
+            myPlayerNameRef.current = myPlayerName
 
-        const pusher = await getPusherInstance() as { subscribe: (ch: string) => PusherChannel }
-        const channel = pusher.subscribe(`uno-room-${code}`)
-        setMpChannel(channel)
+            const pusher = await getPusherInstance() as { subscribe: (ch: string) => PusherChannel }
+            const channel = pusher.subscribe(`uno-room-${code}`)
+            setMpChannel(channel)
 
-        const initialConnected = [{ id: hostId, name: myPlayerName }]
-        setMpConnectedPlayers(initialConnected)
-        mpConnectedRef.current = initialConnected
+            const initialConnected = [{ id: hostId, name: myPlayerName }]
+            setMpConnectedPlayers(initialConnected)
+            mpConnectedRef.current = initialConnected
 
-        bindChannelEvents(channel)
-        setMpState('waiting')
-        setMpError('')
-        
-        console.log('Room created - Host ID:', hostId, 'Name:', myPlayerName)
+            bindChannelEvents(channel)
+            setMpState('waiting')
+            setMpError('')
+            
+            console.log('Room created - Host ID:', hostId, 'Name:', myPlayerName)
+        } catch (error) {
+            console.error('Error creating room:', error)
+            setMpError('Failed to create room. Please try again.')
+        } finally {
+            setTimeout(() => { joiningRef.current = false }, 1000)
+        }
     }, [myPlayerName, bindChannelEvents])
     // #endregion
 
@@ -880,34 +899,43 @@ export default function UnoGame() {
     const joinRoom = useCallback(async () => {
         if (!myPlayerName.trim())  { setMpError('Please enter your name');   return }
         if (!inputRoomCode.trim()) { setMpError('Please enter a room code'); return }
-
-        const code = inputRoomCode.toUpperCase().trim()
-        setRoomCode(code)
-        roomCodeRef.current = code
-        setIsHost(false)
+        if (joiningRef.current) return
         
-        myPlayerNameRef.current = myPlayerName
-        
-        const tempId = 'temp_' + Date.now()
-        setMyPlayerId(tempId as Player['id'])
-        myPlayerIdRef.current = tempId as Player['id']
+        joiningRef.current = true
+        try {
+            const code = inputRoomCode.toUpperCase().trim()
+            setRoomCode(code)
+            roomCodeRef.current = code
+            setIsHost(false)
+            
+            myPlayerNameRef.current = myPlayerName
+            
+            const tempId = 'temp_' + Date.now() + '_' + Math.random().toString(36).substring(7)
+            setMyPlayerId(tempId as Player['id'])
+            myPlayerIdRef.current = tempId as Player['id']
 
-        const pusher = await getPusherInstance() as { subscribe: (ch: string) => PusherChannel }
-        const channel = pusher.subscribe(`uno-room-${code}`)
-        setMpChannel(channel)
+            const pusher = await getPusherInstance() as { subscribe: (ch: string) => PusherChannel }
+            const channel = pusher.subscribe(`uno-room-${code}`)
+            setMpChannel(channel)
 
-        bindChannelEvents(channel)
+            bindChannelEvents(channel)
 
-        await pusherTrigger(`uno-room-${code}`, 'player-joined', {
-            playerId:    tempId,
-            playerName:  myPlayerName,
-            requestSlot: true,
-        })
+            await pusherTrigger(`uno-room-${code}`, 'player-joined', {
+                playerId:    tempId,
+                playerName:  myPlayerName,
+                requestSlot: true,
+            })
 
-        setMpState('waiting')
-        setMpError('')
-        
-        console.log('Joined room - Temp ID:', tempId, 'Name:', myPlayerName)
+            setMpState('waiting')
+            setMpError('')
+            
+            console.log('Joined room - Temp ID:', tempId, 'Name:', myPlayerName)
+        } catch (error) {
+            console.error('Error joining room:', error)
+            setMpError('Failed to join room. Please try again.')
+        } finally {
+            setTimeout(() => { joiningRef.current = false }, 1000)
+        }
     }, [myPlayerName, inputRoomCode, bindChannelEvents])
     // #endregion
 
@@ -929,6 +957,13 @@ export default function UnoGame() {
             if (!data.requestSlot) return
             
             console.log('Processing player join request:', data)
+            
+            // Check if player with this name already exists
+            const existingPlayer = mpConnectedRef.current.find(p => p.name === data.playerName)
+            if (existingPlayer) {
+                console.log('Player with this name already exists:', data.playerName)
+                return
+            }
             
             const nextSlot = availableSlots.find(slot => !assignedSlots.includes(slot))
             
@@ -963,6 +998,32 @@ export default function UnoGame() {
             mpChannel.unbind_all()
         }
     }, [isHost, mpChannel, gameMode])
+    // #endregion
+
+    // #region HANDLE PAGE LEAVE/CLEANUP
+    useEffect(() => {
+        const handleBeforeUnload = () => {
+            if (gameMode === 'multiplayer' && roomCode) {
+                pusherTrigger(`uno-room-${roomCode}`, 'player-left', {
+                    playerId: myPlayerIdRef.current,
+                    playerName: myPlayerNameRef.current
+                }).catch(console.error)
+            }
+        }
+
+        window.addEventListener('beforeunload', handleBeforeUnload)
+        
+        return () => {
+            window.removeEventListener('beforeunload', handleBeforeUnload)
+            // Clean up when component unmounts
+            if (gameMode === 'multiplayer' && roomCode && myPlayerIdRef.current) {
+                pusherTrigger(`uno-room-${roomCode}`, 'player-left', {
+                    playerId: myPlayerIdRef.current,
+                    playerName: myPlayerNameRef.current
+                }).catch(console.error)
+            }
+        }
+    }, [gameMode, roomCode])
     // #endregion
 
     // #region START MULTIPLAYER GAME
@@ -1273,7 +1334,6 @@ export default function UnoGame() {
             directionRef.current = newDir
         }
 
-        // Only show color picker for Wild Card (value 13), not for Wild Draw 4 (value 14)
         if (chosenCard.color === 'any' && chosenCard.value === 13) {
             const colours = ['rgb(255, 6, 0)', 'rgb(0, 170, 69)', 'rgb(0, 150, 224)', 'rgb(255, 222, 0)']
             const picked = colours[Math.floor(Math.random() * colours.length)]
@@ -1458,7 +1518,6 @@ export default function UnoGame() {
             return
         }
 
-        // Only show color picker for Wild Card (value 13), not for Wild Draw 4 (value 14)
         if (playedCard.color === 'any' && playedCard.value === 13) {
             setColorPickerOpen(true)
             colorPickerRef.current = true
@@ -1499,12 +1558,11 @@ export default function UnoGame() {
     }, [triggerUno, checkForWinner, getNextTurn, broadcastAction])
     // #endregion
 
-    // #region COLOUR CHOSEN - FIXED
+    // #region COLOUR CHOSEN
     const handleColorChosen = useCallback(async (color: string) => {
         audioManager.play('colorButton')
         const order = playerOrderRef.current
         const newPile = [...playPileRef.current]
-        // Only update color for Wild Card (value 13)
         const lastCard = newPile[newPile.length - 1]
         if (lastCard.value === 13) {
             newPile[newPile.length - 1] = { ...lastCard, color }
@@ -1691,7 +1749,20 @@ export default function UnoGame() {
                     backdropFilter: 'blur(10px)',
                 }}>
                     <button
-                        onClick={() => { setGameMode('menu'); setMpState('lobby'); setMpError('') }}
+                        onClick={() => { 
+                            // Notify others that player is leaving
+                            if (roomCode && myPlayerIdRef.current) {
+                                pusherTrigger(`uno-room-${roomCode}`, 'player-left', {
+                                    playerId: myPlayerIdRef.current,
+                                    playerName: myPlayerNameRef.current
+                                }).catch(console.error)
+                            }
+                            setGameMode('menu')
+                            setMpState('lobby')
+                            setMpError('')
+                            setMpConnectedPlayers([])
+                            setRoomCode('')
+                        }}
                         style={{
                             background: 'transparent',
                             border: '1px solid rgba(255,255,255,0.25)',
@@ -1733,14 +1804,17 @@ export default function UnoGame() {
 
                             <button
                                 onClick={createRoom}
+                                disabled={joiningRef.current}
                                 style={{
                                     width: '100%', padding: '1rem', marginBottom: '1.5rem',
                                     background: 'linear-gradient(135deg,#4caf50,#2e7d32)',
                                     color: 'white', border: 'none', borderRadius: '0.8rem',
-                                    cursor: 'pointer', fontSize: '1rem', fontWeight: 'bold',
+                                    cursor: joiningRef.current ? 'not-allowed' : 'pointer',
+                                    opacity: joiningRef.current ? 0.6 : 1,
+                                    fontSize: '1rem', fontWeight: 'bold',
                                 }}
                             >
-                                🏠 Create Room
+                                {joiningRef.current ? '⏳ Creating...' : '🏠 Create Room'}
                             </button>
 
                             <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '1.2rem' }}>
@@ -1765,15 +1839,17 @@ export default function UnoGame() {
                                     />
                                     <button
                                         onClick={joinRoom}
+                                        disabled={joiningRef.current}
                                         style={{
                                             padding: '0.8rem 1.5rem',
                                             background: 'linear-gradient(135deg,#2196f3,#0d47a1)',
                                             color: 'white', border: 'none',
-                                            borderRadius: '0.7rem', cursor: 'pointer',
+                                            borderRadius: '0.7rem', cursor: joiningRef.current ? 'not-allowed' : 'pointer',
+                                            opacity: joiningRef.current ? 0.6 : 1,
                                             fontSize: '1rem', fontWeight: 'bold',
                                         }}
                                     >
-                                        Join
+                                        {joiningRef.current ? '⏳ Joining...' : 'Join'}
                                     </button>
                                 </div>
                             </div>
@@ -1818,7 +1894,7 @@ export default function UnoGame() {
                                 }}>
                                     <span style={{ color: '#4caf50' }}>✓</span>
                                     <span style={{ color: 'white' }}>{p.name}</span>
-                                    {i === 0 && (
+                                    {i === 0 && isHost && (
                                         <span style={{
                                             color: '#ffd700', fontSize: '0.8rem', marginLeft: 'auto',
                                         }}>
@@ -1880,6 +1956,13 @@ export default function UnoGame() {
         <main className="game-container">
             <button
                 onClick={() => {
+                    // Notify others that player is leaving
+                    if (roomCode && myPlayerIdRef.current) {
+                        pusherTrigger(`uno-room-${roomCode}`, 'player-left', {
+                            playerId: myPlayerIdRef.current,
+                            playerName: myPlayerNameRef.current
+                        }).catch(console.error)
+                    }
                     setGameMode('menu')
                     setGameOn(false)
                     gameOnRef.current = false
@@ -1999,7 +2082,6 @@ export default function UnoGame() {
                                     height={180}
                                     style={{ borderRadius: '10px', boxShadow: '0 0.8rem 1.6rem rgba(0,0,0,0.35)' }}
                                 />
-                                {/* Wildcard color indicator - show for both Wild Card (13) and Wild Draw 4 (14) */}
                                 {(topCard.value === 13 || topCard.value === 14) && topCard.color !== 'any' && (
                                     <div 
                                         className={`wildcard-color-indicator ${getWildcardColorClass(topCard.color)}`}
