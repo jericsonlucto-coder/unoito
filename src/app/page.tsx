@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import Image from 'next/image'
+
 // #region TYPES
 interface CardType {
     color: string
@@ -21,6 +22,7 @@ interface Player {
 }
 type GameMode = 'menu' | 'ai' | 'multiplayer'
 type MultiplayerState = 'lobby' | 'waiting' | 'playing'
+
 interface GameAction {
     action: string
     payload: any
@@ -28,6 +30,7 @@ interface GameAction {
     playerId: string
 }
 // #endregion
+
 // #region CARD CLASS
 class Card implements CardType {
     color: string
@@ -55,6 +58,7 @@ class Card implements CardType {
     }
 }
 // #endregion
+
 // #region DECK FUNCTIONS
 const createCard = (rgb: string, color: string, deck: CardType[]): void => {
     for (let i = 0; i <= 14; i++) {
@@ -79,6 +83,7 @@ const createCard = (rgb: string, color: string, deck: CardType[]): void => {
         }
     }
 }
+
 const createDeck = (): CardType[] => {
     const deck: CardType[] = []
     const colors = [
@@ -90,6 +95,7 @@ const createDeck = (): CardType[] => {
     colors.forEach(({ rgb, name }) => createCard(rgb, name, deck))
     return deck
 }
+
 const shuffleDeck = (deck: CardType[]): CardType[] => {
     const shuffled = [...deck]
     for (let i = shuffled.length - 1; i > 0; i--) {
@@ -100,6 +106,7 @@ const shuffleDeck = (deck: CardType[]): CardType[] => {
     return shuffled
 }
 // #endregion
+
 // #region AUDIO
 class AudioManager {
     private sounds: Record<string, HTMLAudioElement> = {}
@@ -129,9 +136,11 @@ class AudioManager {
 }
 const audioManager = new AudioManager()
 // #endregion
+
 // #region PUSHER
 const PUSHER_KEY     = '4de6e91a5e72dd9096db'
 const PUSHER_CLUSTER = 'ap1'
+
 async function pusherTrigger(channel: string, event: string, data: unknown) {
     try {
         const res = await fetch('/api/pusher', {
@@ -147,6 +156,7 @@ async function pusherTrigger(channel: string, event: string, data: unknown) {
         console.error('pusherTrigger error:', e)
     }
 }
+
 let pusherInstance: unknown = null
 async function getPusherInstance(): Promise<unknown> {
     if (pusherInstance) return pusherInstance
@@ -169,27 +179,33 @@ async function getPusherInstance(): Promise<unknown> {
     })
 }
 // #endregion
+
 // #region CONSTANTS & TYPES
 const GAME_OVER_SCORE = 100
 const AI_PLAYER_ORDER: Player['id'][] = ['player', 'cpu2', 'cpu1', 'cpu3']
+
 function generateRoomCode(): string {
     return Math.random().toString(36).substring(2, 8).toUpperCase()
 }
+
 interface PusherChannel {
     bind: (event: string, cb: (data: unknown) => void) => void
     unbind_all: () => void
 }
+
 interface JoinPayload {
     playerId: string
     playerName: string
     requestSlot?: boolean
 }
+
 interface SlotPayload {
     playerId: Player['id']
     playerName?: string
     allPlayers: { id: string; name: string }[]
 }
 // #endregion
+
 export default function UnoGame() {
     // #region STATE
     const [gameMode, setGameMode] = useState<GameMode>('menu')
@@ -215,6 +231,7 @@ export default function UnoGame() {
         cpu1: false, cpu2: false, cpu3: false,
     })
     const [direction, setDirection] = useState<'clockwise' | 'counter-clockwise'>('clockwise')
+
     // Multiplayer
     const [mpState, setMpState]                           = useState<MultiplayerState>('lobby')
     const [roomCode, setRoomCode]                         = useState('')
@@ -228,6 +245,7 @@ export default function UnoGame() {
     const [mpChannel, setMpChannel]                       = useState<PusherChannel | null>(null)
     const [playerOrderState, setPlayerOrderState]         = useState<Player['id'][]>(AI_PLAYER_ORDER)
     // #endregion
+
     // #region REFS
     const gameOnRef            = useRef(gameOn)
     const playersRef           = useRef(players)
@@ -244,6 +262,7 @@ export default function UnoGame() {
     const playerOrderRef       = useRef(playerOrderState)
     const mpConnectedRef       = useRef(mpConnectedPlayers)
     const joiningRef           = useRef(false)
+
     useEffect(() => { gameOnRef.current            = gameOn },            [gameOn])
     useEffect(() => { playersRef.current           = players },           [players])
     useEffect(() => { deckRef.current              = deckState },         [deckState])
@@ -259,13 +278,16 @@ export default function UnoGame() {
     useEffect(() => { playerOrderRef.current       = playerOrderState },  [playerOrderState])
     useEffect(() => { mpConnectedRef.current       = mpConnectedPlayers },[mpConnectedPlayers])
     // #endregion
+
     // #region AUDIO INIT
     useEffect(() => { audioManager.init() }, [])
     // #endregion
+
     void wildCardColor
     void selectedWildColor
     void cpuVisible
     void mpPlayerCount
+
     // #region HELPERS
     const getNextTurn = useCallback((
         current: Player['id'],
@@ -279,16 +301,20 @@ export default function UnoGame() {
             : (idx - 1 + order.length) % order.length
         return order[nextIdx]
     }, [])
+
     const triggerUno = useCallback((playerId: string) => {
         audioManager.play('uno')
         setShowUno(prev => ({ ...prev, [playerId]: true }))
         setTimeout(() => setShowUno(prev => ({ ...prev, [playerId]: false })), 2000)
     }, [])
+
     const tallyPoints = useCallback((hand: CardType[]): number =>
         hand.reduce((sum, card) => sum + card.points, 0), [])
+
     const getCpuDelay = useCallback(() =>
         Math.floor(Math.random() * 500 + 1000), [])
     // #endregion
+
     // #region BROADCAST ACTION
     const broadcastAction = useCallback(async (action: string, payload: any) => {
         if (gameModeRef.current !== 'multiplayer') return
@@ -307,6 +333,7 @@ export default function UnoGame() {
         }
     }, [])
     // #endregion
+
     // #region APPLY GAME ACTION
     const applyGameAction = useCallback((gameAction: GameAction) => {
         const { action, payload, playerId } = gameAction
@@ -348,17 +375,13 @@ export default function UnoGame() {
                                 ? `${receivedPlayer.name} (You)`
                                 : receivedPlayer.name
 
-                        // ── KEY FIX ──────────────────────────────────────────────
                         // For OTHER players (not me) we only received a hand COUNT
-                        // (handCount field). Pad / trim their dummy-card array so
-                        // the card-back count stays correct everywhere.
                         if (receivedPlayer.id !== myPlayerIdRef.current) {
                             const targetCount: number =
                                 typeof receivedPlayer.handCount === 'number'
                                     ? receivedPlayer.handCount
                                     : existingPlayer.hand.length
 
-                            // Build a dummy hand of the right length
                             const dummyHand: CardType[] = Array.from(
                                 { length: targetCount },
                                 (_, i) =>
@@ -488,12 +511,11 @@ export default function UnoGame() {
                 break
             }
 
-            // ── KEY FIX: DRAW_CARD_UPDATE now uses handCount to update
-            //    every observer's view of the drawing player ──────────────
+            // KEY FIX: DRAW_CARD_UPDATE uses handCount to update every observer's view
             case 'DRAW_CARD_UPDATE': {
                 const {
                     playerId: drawPlayerId,
-                    handCount,        // NEW – total cards after drawing
+                    handCount,
                     newDeck,
                     newPlayPile,
                 } = payload
@@ -505,14 +527,7 @@ export default function UnoGame() {
                 const updatedPlayers = playersRef.current.map(p => {
                     if (p.id !== drawPlayerId) return p
 
-                    // If it's my own player, keep real cards but pad/trim length
-                    if (drawPlayerId === myPlayerIdRef.current) {
-                        // shouldn't normally happen (we don't send to ourselves)
-                        return p
-                    }
-
                     // For opponents: build a dummy hand of the correct length
-                    // so the card-back count shown is accurate
                     const newCount: number =
                         typeof handCount === 'number' ? handCount : p.hand.length + 1
 
@@ -626,6 +641,7 @@ export default function UnoGame() {
         }
     }, [triggerUno])
     // #endregion
+
     // #region INITIALIZE GAME FROM START
     const initializeGameFromStart = useCallback(async (payload: any) => {
         console.log('=== INITIALIZE GAME FROM START ===')
@@ -731,6 +747,7 @@ export default function UnoGame() {
         setTimeout(() => { if (isMyTurn) alert("It's your turn! 🎮") }, 500)
     }, [])
     // #endregion
+
     // #region CHECK WINNER
     const checkForWinner = useCallback(async (currentPlayers?: Player[]) => {
         const cp = currentPlayers ?? playersRef.current
@@ -796,6 +813,7 @@ export default function UnoGame() {
         return true
     }, [tallyPoints, broadcastAction])
     // #endregion
+
     // #region BIND CHANNEL EVENTS
     const bindChannelEvents = useCallback((channel: PusherChannel) => {
         channel.bind('game-action', (raw: unknown) => {
@@ -845,6 +863,7 @@ export default function UnoGame() {
         })
     }, [applyGameAction, initializeGameFromStart])
     // #endregion
+
     // #region CREATE ROOM
     const createRoom = useCallback(async () => {
         if (!myPlayerName.trim()) { setMpError('Please enter your name'); return }
@@ -873,6 +892,7 @@ export default function UnoGame() {
         }
     }, [myPlayerName, bindChannelEvents])
     // #endregion
+
     // #region JOIN ROOM
     const joinRoom = useCallback(async () => {
         if (!myPlayerName.trim())  { setMpError('Please enter your name');   return }
@@ -906,6 +926,7 @@ export default function UnoGame() {
         }
     }, [myPlayerName, inputRoomCode, bindChannelEvents])
     // #endregion
+
     // #region HOST ASSIGNS SLOT
     useEffect(() => {
         if (!isHost || !mpChannel || gameMode !== 'multiplayer') return
@@ -954,6 +975,7 @@ export default function UnoGame() {
         return () => { mpChannel.unbind_all() }
     }, [isHost, mpChannel, gameMode])
     // #endregion
+
     // #region SYNC PLAYER LIST
     useEffect(() => {
         if (!isHost || !mpChannel || gameMode !== 'multiplayer' || mpState !== 'waiting') return
@@ -966,6 +988,7 @@ export default function UnoGame() {
         return () => clearInterval(id)
     }, [isHost, mpChannel, gameMode, mpState])
     // #endregion
+
     // #region PAGE LEAVE
     useEffect(() => {
         const onUnload = () => {
@@ -986,6 +1009,7 @@ export default function UnoGame() {
         }
     }, [gameMode, roomCode])
     // #endregion
+
     // #region START MULTIPLAYER GAME
     const startMultiplayerGame = useCallback(async () => {
         if (!isHost) return
@@ -1071,6 +1095,7 @@ export default function UnoGame() {
         })
     }, [isHost, mpConnectedPlayers, roomCode])
     // #endregion
+
     // #region NEW AI GAME
     const newAIGame = useCallback((existingScores?: { [key: string]: number }) => {
         setGameOn(true);                      gameOnRef.current      = true
@@ -1114,6 +1139,7 @@ export default function UnoGame() {
         setCurrentTurn('player');           currentTurnRef.current = 'player'
     }, [])
     // #endregion
+
     // #region CPU LOGIC
     const playCPU = useCallback(async (cpuId: Player['id']) => {
         if (currentTurnRef.current !== cpuId) return
@@ -1217,7 +1243,8 @@ export default function UnoGame() {
         setCurrentTurn(nextTurn); currentTurnRef.current = nextTurn
     }, [triggerUno, checkForWinner, getCpuDelay, getNextTurn])
     // #endregion
-    // #region DRAW PILE CLICK  ← FIXED: broadcast handCount
+
+    // #region DRAW PILE CLICK
     const handleDrawPileClick = useCallback(async () => {
         if (currentTurnRef.current !== myPlayerIdRef.current) return
         if (colorPickerRef.current) return
@@ -1255,11 +1282,10 @@ export default function UnoGame() {
         setPlayPile(newPlayPile);     playPileRef.current = newPlayPile
 
         if (gameModeRef.current === 'multiplayer') {
-            // ── KEY FIX: send handCount so every other client updates the
-            //    card-back count for this player immediately ───────────────
+            // Send handCount so every other client updates the card-back count
             await broadcastAction('DRAW_CARD_UPDATE', {
                 playerId:  myPlayerIdRef.current,
-                handCount: newHand.length,   // ← NEW field
+                handCount: newHand.length,
                 newDeck,
                 newPlayPile,
             })
@@ -1270,7 +1296,7 @@ export default function UnoGame() {
             const canPlay =
                 drawnCard.color === topCard.color || drawnCard.value === topCard.value ||
                 drawnCard.color === 'any' || topCard.color === 'any'
-            if (canPlay) return   // keep turn so player can play the drawn card
+            if (canPlay) return
         }
 
         const nextTurn = getNextTurn(myPlayerIdRef.current, currentDir, order)
@@ -1279,6 +1305,7 @@ export default function UnoGame() {
             await broadcastAction('TURN_CHANGE', { nextTurn })
     }, [getNextTurn, broadcastAction])
     // #endregion
+
     // #region PLAYER CARD CLICK
     const handlePlayerCardClick = useCallback(async (index: number) => {
         if (currentTurnRef.current !== myPlayerIdRef.current) return
@@ -1348,13 +1375,11 @@ export default function UnoGame() {
                     nextTurn: null,
                     drawAmount: playedCard.drawValue,
                     drawTargetPlayer: drawnTargetPlayer,
-                    // ── send handCount for every player ──────────────────
                     updatedPlayers: updatedPlayers.map(p => ({
                         id: p.id,
                         name: p.name.replace(' (You)', ''),
                         score: p.score,
-                        handCount: p.hand.length,   // ← NEW
-                        // Only send real hand data for myself
+                        handCount: p.hand.length,
                         hand: p.id === myPlayerIdRef.current
                             ? p.hand.map(c => ({
                                 color: c.color, value: c.value, points: c.points,
@@ -1382,12 +1407,11 @@ export default function UnoGame() {
                 nextTurn,
                 drawAmount: playedCard.drawValue,
                 drawTargetPlayer: drawnTargetPlayer,
-                // ── send handCount for every player ──────────────────────
                 updatedPlayers: updatedPlayers.map(p => ({
                     id: p.id,
                     name: p.name.replace(' (You)', ''),
                     score: p.score,
-                    handCount: p.hand.length,   // ← NEW
+                    handCount: p.hand.length,
                     hand: p.id === myPlayerIdRef.current
                         ? p.hand.map(c => ({
                             color: c.color, value: c.value, points: c.points,
@@ -1399,6 +1423,7 @@ export default function UnoGame() {
         }
     }, [triggerUno, checkForWinner, getNextTurn, broadcastAction])
     // #endregion
+
     // #region COLOUR CHOSEN
     const handleColorChosen = useCallback(async (color: string) => {
         audioManager.play('colorButton')
@@ -1422,6 +1447,7 @@ export default function UnoGame() {
         }
     }, [getNextTurn, broadcastAction])
     // #endregion
+
     // #region AUTO CPU TURN
     useEffect(() => {
         if (gameMode !== 'ai' || !gameOn || colorPickerOpen || currentTurn === 'player') return
@@ -1429,6 +1455,7 @@ export default function UnoGame() {
         if (p && !p.isHuman) playCPU(currentTurn)
     }, [currentTurn, gameOn, colorPickerOpen, playCPU, gameMode, players])
     // #endregion
+
     // #region PLAY AGAIN
     const handlePlayAgain = useCallback(() => {
         audioManager.play('playAgain')
@@ -1442,6 +1469,7 @@ export default function UnoGame() {
         }
     }, [gameMode, newAIGame, isHost, startMultiplayerGame])
     // #endregion
+
     // #region DERIVED
     const topCard    = playPile[playPile.length - 1]
     const myPlayer   = players.find(p => p.id === myPlayerId)
@@ -1470,6 +1498,7 @@ export default function UnoGame() {
         return ''
     }
     // #endregion
+
     // =====================================================================
     // #region MENU
     if (gameMode === 'menu') {
@@ -1511,6 +1540,7 @@ export default function UnoGame() {
         )
     }
     // #endregion
+
     // =====================================================================
     // #region MULTIPLAYER LOBBY
     if (gameMode === 'multiplayer' && mpState !== 'playing') {
@@ -1592,7 +1622,7 @@ export default function UnoGame() {
                                             opacity: joiningRef.current ? 0.6 : 1,
                                             fontSize: '1rem', fontWeight: 'bold',
                                         }}>
-                                        {joiningRef.current ? '⏳' : 'Join'}
+                                        {joiningRef.current ? '⏳ Joining...' : 'Join'}
                                     </button>
                                 </div>
                             </div>
@@ -1674,6 +1704,7 @@ export default function UnoGame() {
         )
     }
     // #endregion
+
     // =====================================================================
     // #region GAME BOARD
     return (
