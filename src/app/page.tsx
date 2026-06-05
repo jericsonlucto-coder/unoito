@@ -344,7 +344,17 @@ export default function UnoGame() {
             case 'PLAY_CARD': {
                 const { card, newHand, newPlayPile, newDirection, nextTurn, colorChosen, drawAmount, drawnCards, drawTargetPlayer, updatedPlayers: receivedUpdatedPlayers } = payload
 
-                const updatedPlayPile = [...playPileRef.current, card]
+                // Don't add the card again if it's already in the play pile from newPlayPile
+                let updatedPlayPile = [...playPileRef.current]
+                
+                if (newPlayPile && newPlayPile.length > 0) {
+                    // Use the complete newPlayPile if provided
+                    updatedPlayPile = newPlayPile
+                } else if (card) {
+                    // Otherwise add the card to the existing pile
+                    updatedPlayPile.push(card)
+                }
+                
                 setPlayPile(updatedPlayPile)
                 playPileRef.current = updatedPlayPile
 
@@ -366,8 +376,9 @@ export default function UnoGame() {
                             )
                         )
                         
-                        if (p.id === myPlayerIdRef.current && existingPlayer && existingPlayer.hand.length > handToUse.length) {
-                            console.log(`Preserving local hand for ${p.id}: ${existingPlayer.hand.length} vs received ${handToUse.length}`)
+                        // For Wild Card (value 13), preserve the local hand if it exists
+                        if (p.id === myPlayerIdRef.current && existingPlayer && card && card.value === 13 && existingPlayer.hand.length > handToUse.length) {
+                            console.log(`Preserving local hand for ${p.id} (Wild Card case): ${existingPlayer.hand.length} vs received ${handToUse.length}`)
                             handToUse = existingPlayer.hand
                         }
                         
@@ -405,11 +416,6 @@ export default function UnoGame() {
                 
                 setPlayers(updatedPlayers)
                 playersRef.current = updatedPlayers
-                
-                if (newPlayPile) {
-                    setPlayPile(newPlayPile)
-                    playPileRef.current = newPlayPile
-                }
 
                 if (newDirection && newDirection !== directionRef.current) {
                     setDirection(newDirection)
@@ -429,7 +435,8 @@ export default function UnoGame() {
                     selectedWildColorRef.current = colorChosen
                 }
 
-                if (newHand && newHand.length === 1) {
+                if (newHand && newHand.length === 1 && card && card.value !== 13) {
+                    // Only trigger UNO for non-wild cards since wild card color picker hasn't been resolved yet
                     triggerUno(playerId)
                 }
                 break
@@ -495,7 +502,7 @@ export default function UnoGame() {
                 } else {
                     const updatedPile = [...playPileRef.current]
                     const lastCard = updatedPile[updatedPile.length - 1]
-                    if (lastCard.value === 13) {
+                    if (lastCard && lastCard.value === 13) {
                         updatedPile[updatedPile.length - 1] = { ...lastCard, color }
                     }
                     setPlayPile(updatedPile)
@@ -816,7 +823,6 @@ export default function UnoGame() {
             const data = raw as JoinPayload
             console.log('Player joined:', data)
             setMpConnectedPlayers(prev => {
-                // Check if player already exists (by ID or name) to prevent duplicates
                 const exists = prev.find(p => p.id === data.playerId || p.name === data.playerName)
                 if (exists) return prev
                 return [...prev, { id: data.playerId, name: data.playerName }]
@@ -827,7 +833,6 @@ export default function UnoGame() {
             const data = raw as { playerId: string; playerName?: string }
             console.log('Player left:', data)
             setMpConnectedPlayers(prev => prev.filter(p => p.id !== data.playerId))
-            // Clear error if any
             setMpError('')
         })
 
@@ -844,7 +849,6 @@ export default function UnoGame() {
             }
             
             if (data.allPlayers) {
-                // Remove duplicates by using a Map
                 const uniquePlayers = Array.from(
                     new Map(data.allPlayers.map(p => [p.name, p])).values()
                 )
@@ -958,7 +962,6 @@ export default function UnoGame() {
             
             console.log('Processing player join request:', data)
             
-            // Check if player with this name already exists
             const existingPlayer = mpConnectedRef.current.find(p => p.name === data.playerName)
             if (existingPlayer) {
                 console.log('Player with this name already exists:', data.playerName)
@@ -1015,7 +1018,6 @@ export default function UnoGame() {
         
         return () => {
             window.removeEventListener('beforeunload', handleBeforeUnload)
-            // Clean up when component unmounts
             if (gameMode === 'multiplayer' && roomCode && myPlayerIdRef.current) {
                 pusherTrigger(`uno-room-${roomCode}`, 'player-left', {
                     playerId: myPlayerIdRef.current,
@@ -1518,7 +1520,34 @@ export default function UnoGame() {
             return
         }
 
+        // Handle Wild Card (value 13) - show color picker, broadcast card first
         if (playedCard.color === 'any' && playedCard.value === 13) {
+            // First broadcast that the card is played (without color yet)
+            if (gameModeRef.current === 'multiplayer') {
+                await broadcastAction('PLAY_CARD', {
+                    card: playedCard,
+                    newHand: newPlayerHand,
+                    newPlayPile: newPlayPile,
+                    newDirection: newDir !== currentDir ? newDir : null,
+                    nextTurn: null, // Don't change turn yet - wait for color
+                    drawAmount: playedCard.drawValue,
+                    drawTargetPlayer: null,
+                    updatedPlayers: updatedPlayers.map(p => ({
+                        id: p.id,
+                        name: p.name.replace(' (You)', ''),
+                        score: p.score,
+                        position: p.position,
+                        hand: p.hand.map(c => ({
+                            color: c.color,
+                            value: c.value,
+                            points: c.points,
+                            drawValue: c.drawValue,
+                            src: c.src,
+                        })),
+                    })),
+                })
+            }
+            
             setColorPickerOpen(true)
             colorPickerRef.current = true
             return
@@ -1564,7 +1593,7 @@ export default function UnoGame() {
         const order = playerOrderRef.current
         const newPile = [...playPileRef.current]
         const lastCard = newPile[newPile.length - 1]
-        if (lastCard.value === 13) {
+        if (lastCard && lastCard.value === 13) {
             newPile[newPile.length - 1] = { ...lastCard, color }
         }
 
@@ -1581,11 +1610,15 @@ export default function UnoGame() {
         currentTurnRef.current = nextTurn
 
         if (gameModeRef.current === 'multiplayer') {
+            // Broadcast color chosen AND turn change together
             await broadcastAction('COLOR_CHOSEN', { 
                 color, 
                 nextTurn,
                 newPlayPile: newPile
             })
+            
+            // Also broadcast turn change to ensure all players know whose turn it is
+            await broadcastAction('TURN_CHANGE', { nextTurn })
         }
     }, [getNextTurn, broadcastAction])
     // #endregion
@@ -1750,7 +1783,6 @@ export default function UnoGame() {
                 }}>
                     <button
                         onClick={() => { 
-                            // Notify others that player is leaving
                             if (roomCode && myPlayerIdRef.current) {
                                 pusherTrigger(`uno-room-${roomCode}`, 'player-left', {
                                     playerId: myPlayerIdRef.current,
@@ -1956,7 +1988,6 @@ export default function UnoGame() {
         <main className="game-container">
             <button
                 onClick={() => {
-                    // Notify others that player is leaving
                     if (roomCode && myPlayerIdRef.current) {
                         pusherTrigger(`uno-room-${roomCode}`, 'player-left', {
                             playerId: myPlayerIdRef.current,
