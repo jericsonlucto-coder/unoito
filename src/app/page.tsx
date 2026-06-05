@@ -358,31 +358,40 @@ export default function UnoGame() {
                 let updatedPlayers: Player[] = []
                 
                 if (receivedUpdatedPlayers && Array.isArray(receivedUpdatedPlayers)) {
-                    updatedPlayers = receivedUpdatedPlayers.map((p: any) => {
-                        const existingPlayer = playersRef.current.find(ex => ex.id === p.id)
-                        const displayName = p.id === myPlayerIdRef.current ? `${p.name} (You)` : p.name
+                    // Only update players that have hand data provided
+                    updatedPlayers = playersRef.current.map((existingPlayer) => {
+                        const receivedPlayer = receivedUpdatedPlayers.find((p: any) => p.id === existingPlayer.id)
+                        if (!receivedPlayer) return existingPlayer
                         
-                        let handToUse = p.hand.map((cardData: any) => 
-                            new Card(
-                                cardData.color,
-                                cardData.value,
-                                cardData.points,
-                                cardData.value === 0 || (cardData.value >= 1 && cardData.value <= 9),
-                                cardData.drawValue,
-                                cardData.src
+                        const displayName = receivedPlayer.id === myPlayerIdRef.current ? `${receivedPlayer.name} (You)` : receivedPlayer.name
+                        
+                        // If hand is null or not provided, preserve the existing hand
+                        let handToUse = existingPlayer.hand
+                        if (receivedPlayer.hand !== null && Array.isArray(receivedPlayer.hand) && receivedPlayer.hand.length > 0) {
+                            handToUse = receivedPlayer.hand.map((cardData: any) => 
+                                new Card(
+                                    cardData.color,
+                                    cardData.value,
+                                    cardData.points,
+                                    cardData.value === 0 || (cardData.value >= 1 && cardData.value <= 9),
+                                    cardData.drawValue,
+                                    cardData.src
+                                )
                             )
-                        )
+                        }
                         
-                        if (p.id === myPlayerIdRef.current && existingPlayer && card && card.value === 13 && existingPlayer.hand.length > handToUse.length) {
-                            console.log(`Preserving local hand for ${p.id} (Wild Card case): ${existingPlayer.hand.length} vs received ${handToUse.length}`)
+                        // For Wild Card case, preserve local hand if needed
+                        if (receivedPlayer.id === myPlayerIdRef.current && card && card.value === 13 && existingPlayer.hand.length > handToUse.length) {
+                            console.log(`Preserving local hand for ${receivedPlayer.id} (Wild Card case): ${existingPlayer.hand.length} vs received ${handToUse.length}`)
                             handToUse = existingPlayer.hand
                         }
                         
                         return {
-                            ...p,
+                            ...existingPlayer,
+                            ...receivedPlayer,
                             name: displayName,
                             hand: handToUse,
-                            position: existingPlayer?.position || p.position || 'top',
+                            position: existingPlayer.position,
                         }
                     })
                 } else {
@@ -1337,7 +1346,7 @@ export default function UnoGame() {
     }, [])
     // #endregion
 
-    // #region CPU LOGIC - FIXED FOR SKIP CARD
+    // #region CPU LOGIC
     const playCPU = useCallback(async (cpuId: Player['id']) => {
         if (currentTurnRef.current !== cpuId) return
         if (!gameOnRef.current) return
@@ -1413,7 +1422,6 @@ export default function UnoGame() {
             directionRef.current = newDir
             nextTurn = getNextTurn(cpuId, newDir, order)
         } else if (chosenCard.value === 11) {
-            // Skip card - skip the next player
             const skippedPlayer = getNextTurn(cpuId, newDir, order)
             nextTurn = getNextTurn(skippedPlayer, newDir, order)
             console.log(`CPU Skip card played! Skipping ${skippedPlayer}, next turn: ${nextTurn}`)
@@ -1517,7 +1525,7 @@ export default function UnoGame() {
     }, [getNextTurn, broadcastAction])
     // #endregion
 
-    // #region PLAYER CARD CLICK - FIXED FOR SKIP CARD
+    // #region PLAYER CARD CLICK
     const handlePlayerCardClick = useCallback(async (index: number) => {
         if (currentTurnRef.current !== myPlayerIdRef.current) return
         if (colorPickerRef.current) return
@@ -1554,7 +1562,6 @@ export default function UnoGame() {
 
         let nextTurn: Player['id'] | null = null
 
-        // Handle draw cards (Draw 2 or Wild Draw 4)
         if (playedCard.drawValue > 0) {
             audioManager.play('plusCard')
             const drawTargetPlayer = getNextTurn(myPlayerIdRef.current, newDir, order)
@@ -1586,12 +1593,8 @@ export default function UnoGame() {
                 playPileRef.current = updPile
             }
             nextTurn = drawTargetPlayer
-        }
-        // Handle skip card (value 11)
-        else if (playedCard.value === 11) {
-            // Skip the next player
+        } else if (playedCard.value === 11) {
             const skippedPlayer = getNextTurn(myPlayerIdRef.current, newDir, order)
-            // Get the player after the skipped player
             nextTurn = getNextTurn(skippedPlayer, newDir, order)
             console.log(`Skip card played! Skipping ${skippedPlayer}, next turn: ${nextTurn}`)
         }
@@ -1601,7 +1604,6 @@ export default function UnoGame() {
         setPlayPile(newPlayPile)
         playPileRef.current = newPlayPile
 
-        // Check for UNO
         if (newPlayerHand.length === 1) {
             triggerUno(myPlayerIdRef.current)
             if (gameModeRef.current === 'multiplayer') {
@@ -1609,15 +1611,30 @@ export default function UnoGame() {
             }
         }
 
-        // Check for winner
         if (newPlayerHand.length === 0) {
             await checkForWinner(updatedPlayers)
             return
         }
 
-        // Handle Wild Card (value 13)
         if (playedCard.color === 'any' && playedCard.value === 13) {
             if (gameModeRef.current === 'multiplayer') {
+                const minimalUpdatedPlayers = playersRef.current.map(p => {
+                    const isCurrentPlayer = p.id === myPlayerIdRef.current
+                    return {
+                        id: p.id,
+                        name: p.name.replace(' (You)', ''),
+                        score: p.score,
+                        position: p.position,
+                        hand: isCurrentPlayer ? updatedPlayers.find(up => up.id === p.id)?.hand.map(c => ({
+                            color: c.color,
+                            value: c.value,
+                            points: c.points,
+                            drawValue: c.drawValue,
+                            src: c.src,
+                        })) : null,
+                    }
+                })
+                
                 await broadcastAction('PLAY_CARD', {
                     card: playedCard,
                     newHand: newPlayerHand,
@@ -1626,19 +1643,7 @@ export default function UnoGame() {
                     nextTurn: null,
                     drawAmount: playedCard.drawValue,
                     drawTargetPlayer: null,
-                    updatedPlayers: updatedPlayers.map(p => ({
-                        id: p.id,
-                        name: p.name.replace(' (You)', ''),
-                        score: p.score,
-                        position: p.position,
-                        hand: p.hand.map(c => ({
-                            color: c.color,
-                            value: c.value,
-                            points: c.points,
-                            drawValue: c.drawValue,
-                            src: c.src,
-                        })),
-                    })),
+                    updatedPlayers: minimalUpdatedPlayers,
                 })
             }
             
@@ -1647,7 +1652,6 @@ export default function UnoGame() {
             return
         }
 
-        // If next turn not set yet (normal card), get the next player
         if (!nextTurn) {
             nextTurn = getNextTurn(myPlayerIdRef.current, newDir, order)
         }
@@ -1656,6 +1660,23 @@ export default function UnoGame() {
         currentTurnRef.current = nextTurn
 
         if (gameModeRef.current === 'multiplayer') {
+            const minimalUpdatedPlayers = playersRef.current.map(p => {
+                const isCurrentPlayer = p.id === myPlayerIdRef.current
+                return {
+                    id: p.id,
+                    name: p.name.replace(' (You)', ''),
+                    score: p.score,
+                    position: p.position,
+                    hand: isCurrentPlayer ? updatedPlayers.find(up => up.id === p.id)?.hand.map(c => ({
+                        color: c.color,
+                        value: c.value,
+                        points: c.points,
+                        drawValue: c.drawValue,
+                        src: c.src,
+                    })) : null,
+                }
+            })
+            
             await broadcastAction('PLAY_CARD', {
                 card: playedCard,
                 newHand: newPlayerHand,
@@ -1664,19 +1685,7 @@ export default function UnoGame() {
                 nextTurn: nextTurn,
                 drawAmount: playedCard.drawValue,
                 drawTargetPlayer: playedCard.drawValue > 0 ? nextTurn : null,
-                updatedPlayers: updatedPlayers.map(p => ({
-                    id: p.id,
-                    name: p.name.replace(' (You)', ''),
-                    score: p.score,
-                    position: p.position,
-                    hand: p.hand.map(c => ({
-                        color: c.color,
-                        value: c.value,
-                        points: c.points,
-                        drawValue: c.drawValue,
-                        src: c.src,
-                    })),
-                })),
+                updatedPlayers: minimalUpdatedPlayers,
             })
         }
     }, [triggerUno, checkForWinner, getNextTurn, broadcastAction])
