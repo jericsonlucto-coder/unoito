@@ -1,7 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import Image from 'next/image'
-
 // #region TYPES
 interface CardType {
     color: string
@@ -22,7 +21,6 @@ interface Player {
 }
 type GameMode = 'menu' | 'ai' | 'multiplayer'
 type MultiplayerState = 'lobby' | 'waiting' | 'playing'
-
 interface GameAction {
     action: string
     payload: any
@@ -30,7 +28,6 @@ interface GameAction {
     playerId: string
 }
 // #endregion
-
 // #region CARD CLASS
 class Card implements CardType {
     color: string
@@ -58,7 +55,6 @@ class Card implements CardType {
     }
 }
 // #endregion
-
 // #region DECK FUNCTIONS
 const createCard = (rgb: string, color: string, deck: CardType[]): void => {
     for (let i = 0; i <= 14; i++) {
@@ -83,7 +79,6 @@ const createCard = (rgb: string, color: string, deck: CardType[]): void => {
         }
     }
 }
-
 const createDeck = (): CardType[] => {
     const deck: CardType[] = []
     const colors = [
@@ -95,7 +90,6 @@ const createDeck = (): CardType[] => {
     colors.forEach(({ rgb, name }) => createCard(rgb, name, deck))
     return deck
 }
-
 const shuffleDeck = (deck: CardType[]): CardType[] => {
     const shuffled = [...deck]
     for (let i = shuffled.length - 1; i > 0; i--) {
@@ -106,7 +100,6 @@ const shuffleDeck = (deck: CardType[]): CardType[] => {
     return shuffled
 }
 // #endregion
-
 // #region AUDIO
 class AudioManager {
     private sounds: Record<string, HTMLAudioElement> = {}
@@ -136,11 +129,9 @@ class AudioManager {
 }
 const audioManager = new AudioManager()
 // #endregion
-
 // #region PUSHER
 const PUSHER_KEY     = '4de6e91a5e72dd9096db'
 const PUSHER_CLUSTER = 'ap1'
-
 async function pusherTrigger(channel: string, event: string, data: unknown) {
     try {
         const res = await fetch('/api/pusher', {
@@ -156,7 +147,6 @@ async function pusherTrigger(channel: string, event: string, data: unknown) {
         console.error('pusherTrigger error:', e)
     }
 }
-
 let pusherInstance: unknown = null
 async function getPusherInstance(): Promise<unknown> {
     if (pusherInstance) return pusherInstance
@@ -179,33 +169,27 @@ async function getPusherInstance(): Promise<unknown> {
     })
 }
 // #endregion
-
 // #region CONSTANTS & TYPES
 const GAME_OVER_SCORE = 100
 const AI_PLAYER_ORDER: Player['id'][] = ['player', 'cpu2', 'cpu1', 'cpu3']
-
 function generateRoomCode(): string {
     return Math.random().toString(36).substring(2, 8).toUpperCase()
 }
-
 interface PusherChannel {
     bind: (event: string, cb: (data: unknown) => void) => void
     unbind_all: () => void
 }
-
 interface JoinPayload {
     playerId: string
     playerName: string
     requestSlot?: boolean
 }
-
 interface SlotPayload {
     playerId: Player['id']
     playerName?: string
     allPlayers: { id: string; name: string }[]
 }
 // #endregion
-
 export default function UnoGame() {
     // #region STATE
     const [gameMode, setGameMode] = useState<GameMode>('menu')
@@ -231,7 +215,6 @@ export default function UnoGame() {
         cpu1: false, cpu2: false, cpu3: false,
     })
     const [direction, setDirection] = useState<'clockwise' | 'counter-clockwise'>('clockwise')
-
     // Multiplayer
     const [mpState, setMpState]                           = useState<MultiplayerState>('lobby')
     const [roomCode, setRoomCode]                         = useState('')
@@ -245,7 +228,6 @@ export default function UnoGame() {
     const [mpChannel, setMpChannel]                       = useState<PusherChannel | null>(null)
     const [playerOrderState, setPlayerOrderState]         = useState<Player['id'][]>(AI_PLAYER_ORDER)
     // #endregion
-
     // #region REFS
     const gameOnRef            = useRef(gameOn)
     const playersRef           = useRef(players)
@@ -262,7 +244,6 @@ export default function UnoGame() {
     const playerOrderRef       = useRef(playerOrderState)
     const mpConnectedRef       = useRef(mpConnectedPlayers)
     const joiningRef           = useRef(false)
-
     useEffect(() => { gameOnRef.current            = gameOn },            [gameOn])
     useEffect(() => { playersRef.current           = players },           [players])
     useEffect(() => { deckRef.current              = deckState },         [deckState])
@@ -278,14 +259,13 @@ export default function UnoGame() {
     useEffect(() => { playerOrderRef.current       = playerOrderState },  [playerOrderState])
     useEffect(() => { mpConnectedRef.current       = mpConnectedPlayers },[mpConnectedPlayers])
     // #endregion
-
     // #region AUDIO INIT
     useEffect(() => { audioManager.init() }, [])
     // #endregion
-
     void wildCardColor
     void selectedWildColor
-
+    void cpuVisible
+    void mpPlayerCount
     // #region HELPERS
     const getNextTurn = useCallback((
         current: Player['id'],
@@ -299,25 +279,20 @@ export default function UnoGame() {
             : (idx - 1 + order.length) % order.length
         return order[nextIdx]
     }, [])
-
     const triggerUno = useCallback((playerId: string) => {
         audioManager.play('uno')
         setShowUno(prev => ({ ...prev, [playerId]: true }))
         setTimeout(() => setShowUno(prev => ({ ...prev, [playerId]: false })), 2000)
     }, [])
-
     const tallyPoints = useCallback((hand: CardType[]): number =>
         hand.reduce((sum, card) => sum + card.points, 0), [])
-
     const getCpuDelay = useCallback(() =>
         Math.floor(Math.random() * 500 + 1000), [])
     // #endregion
-
     // #region BROADCAST ACTION
     const broadcastAction = useCallback(async (action: string, payload: any) => {
         if (gameModeRef.current !== 'multiplayer') return
         if (!gameOnRef.current && action !== 'ROUND_WINNER' && action !== 'GAME_WINNER') return
-        
         const channel = `uno-room-${roomCodeRef.current}`
         try {
             await pusherTrigger(channel, 'game-action', {
@@ -331,59 +306,105 @@ export default function UnoGame() {
             console.error(`Failed to broadcast ${action}:`, error)
         }
     }, [])
-
-    // Apply game action to local state
+    // #endregion
+    // #region APPLY GAME ACTION
     const applyGameAction = useCallback((gameAction: GameAction) => {
         const { action, payload, playerId } = gameAction
-        
         if (playerId === myPlayerIdRef.current) return
-        
         console.log('Applying action:', action, payload)
-        
-        switch(action) {
+        switch (action) {
             case 'PLAY_CARD': {
-                const { card, newHand, newPlayPile, newDirection, nextTurn, colorChosen, drawAmount, drawTargetPlayer, updatedPlayers: receivedUpdatedPlayers } = payload
+                const {
+                    card,
+                    newHand,
+                    newPlayPile,
+                    newDirection,
+                    nextTurn,
+                    colorChosen,
+                    drawAmount,
+                    drawTargetPlayer,
+                    updatedPlayers: receivedUpdatedPlayers,
+                } = payload
 
                 let updatedPlayPile = [...playPileRef.current]
-                
                 if (newPlayPile && newPlayPile.length > 0) {
                     updatedPlayPile = newPlayPile
                 } else if (card) {
                     updatedPlayPile.push(card)
                 }
-                
                 setPlayPile(updatedPlayPile)
                 playPileRef.current = updatedPlayPile
 
+                // Build updated players list
                 let updatedPlayers: Player[] = []
-                
                 if (receivedUpdatedPlayers && Array.isArray(receivedUpdatedPlayers)) {
                     updatedPlayers = playersRef.current.map((existingPlayer) => {
-                        const receivedPlayer = receivedUpdatedPlayers.find((p: any) => p.id === existingPlayer.id)
+                        const receivedPlayer = receivedUpdatedPlayers.find(
+                            (p: any) => p.id === existingPlayer.id
+                        )
                         if (!receivedPlayer) return existingPlayer
-                        
-                        const displayName = receivedPlayer.id === myPlayerIdRef.current ? `${receivedPlayer.name} (You)` : receivedPlayer.name
-                        
+                        const displayName =
+                            receivedPlayer.id === myPlayerIdRef.current
+                                ? `${receivedPlayer.name} (You)`
+                                : receivedPlayer.name
+
+                        // ── KEY FIX ──────────────────────────────────────────────
+                        // For OTHER players (not me) we only received a hand COUNT
+                        // (handCount field). Pad / trim their dummy-card array so
+                        // the card-back count stays correct everywhere.
+                        if (receivedPlayer.id !== myPlayerIdRef.current) {
+                            const targetCount: number =
+                                typeof receivedPlayer.handCount === 'number'
+                                    ? receivedPlayer.handCount
+                                    : existingPlayer.hand.length
+
+                            // Build a dummy hand of the right length
+                            const dummyHand: CardType[] = Array.from(
+                                { length: targetCount },
+                                (_, i) =>
+                                    existingPlayer.hand[i] ?? {
+                                        color: 'any',
+                                        value: -1,
+                                        points: 0,
+                                        changeTurn: false,
+                                        drawValue: 0,
+                                        src: '/images/back.png',
+                                        playedByPlayer: false,
+                                    }
+                            )
+                            return {
+                                ...existingPlayer,
+                                name: displayName,
+                                score: receivedPlayer.score ?? existingPlayer.score,
+                                hand: dummyHand,
+                            }
+                        }
+
+                        // For MY own player, use the real card data sent
                         let handToUse = existingPlayer.hand
-                        if (receivedPlayer.hand !== null && Array.isArray(receivedPlayer.hand) && receivedPlayer.hand.length > 0) {
-                            handToUse = receivedPlayer.hand.map((cardData: any) => 
-                                new Card(
-                                    cardData.color,
-                                    cardData.value,
-                                    cardData.points,
-                                    cardData.value === 0 || (cardData.value >= 1 && cardData.value <= 9),
-                                    cardData.drawValue,
-                                    cardData.src
-                                )
+                        if (
+                            receivedPlayer.hand !== null &&
+                            Array.isArray(receivedPlayer.hand) &&
+                            receivedPlayer.hand.length > 0
+                        ) {
+                            handToUse = receivedPlayer.hand.map(
+                                (cardData: any) =>
+                                    new Card(
+                                        cardData.color,
+                                        cardData.value,
+                                        cardData.points,
+                                        cardData.value === 0 ||
+                                            (cardData.value >= 1 && cardData.value <= 9),
+                                        cardData.drawValue,
+                                        cardData.src
+                                    )
                             )
                         }
-                        
                         return {
                             ...existingPlayer,
-                            ...receivedPlayer,
                             name: displayName,
+                            score: receivedPlayer.score ?? existingPlayer.score,
                             hand: handToUse,
-                            position: existingPlayer.position,
                         }
                     })
                 } else {
@@ -391,17 +412,19 @@ export default function UnoGame() {
                         p.id === playerId ? { ...p, hand: newHand } : p
                     )
                 }
-                
-                // Handle draw cards - draw penalty cards for the target player (ONCE)
+
+                // Handle draw-card penalty for the target player
                 if (drawAmount && drawAmount > 0 && drawTargetPlayer) {
-                    const drawPlayerIndex = updatedPlayers.findIndex(p => p.id === drawTargetPlayer)
-                    
+                    const drawPlayerIndex = updatedPlayers.findIndex(
+                        p => p.id === drawTargetPlayer
+                    )
                     if (drawPlayerIndex !== -1) {
-                        const drawPlayer = updatedPlayers[drawPlayerIndex]
+                        const drawPlayer = {
+                            ...updatedPlayers[drawPlayerIndex],
+                            hand: [...updatedPlayers[drawPlayerIndex].hand],
+                        }
                         let updDeck = [...deckRef.current]
                         let updPile = [...updatedPlayPile]
-                        
-                        // Draw the exact number of penalty cards (2 or 4)
                         for (let i = 0; i < drawAmount; i++) {
                             if (updDeck.length > 0) {
                                 const drawnCard = updDeck.shift()!
@@ -416,17 +439,17 @@ export default function UnoGame() {
                                 audioManager.play('drawCard')
                             }
                         }
-                        
                         updatedPlayers[drawPlayerIndex] = drawPlayer
                         setDeckState(updDeck)
                         deckRef.current = updDeck
                         setPlayPile(updPile)
                         playPileRef.current = updPile
-                        
-                        console.log(`Added ${drawAmount} penalty cards to player ${drawTargetPlayer}`)
+                        console.log(
+                            `Added ${drawAmount} penalty cards to player ${drawTargetPlayer}`
+                        )
                     }
                 }
-                
+
                 setPlayers(updatedPlayers)
                 playersRef.current = updatedPlayers
 
@@ -434,12 +457,10 @@ export default function UnoGame() {
                     setDirection(newDirection)
                     directionRef.current = newDirection
                 }
-
                 if (nextTurn) {
                     setCurrentTurn(nextTurn)
                     currentTurnRef.current = nextTurn
                 }
-
                 if (colorChosen) {
                     setColorPickerOpen(true)
                     colorPickerRef.current = true
@@ -447,103 +468,82 @@ export default function UnoGame() {
                     setSelectedWildColor(colorChosen)
                     selectedWildColorRef.current = colorChosen
                 }
-
                 if (newHand && newHand.length === 1 && card && card.value !== 13) {
                     triggerUno(playerId)
                 }
                 break
             }
-        
+
             case 'DRAW_CARD': {
                 const { newHand, newDeck, newPlayPile, nextTurn } = payload
-
                 const updatedPlayers = playersRef.current.map(p =>
                     p.id === playerId ? { ...p, hand: newHand } : p
                 )
                 setPlayers(updatedPlayers)
                 playersRef.current = updatedPlayers
-
-                if (newDeck) {
-                    setDeckState(newDeck)
-                    deckRef.current = newDeck
-                }
-                if (newPlayPile) {
-                    setPlayPile(newPlayPile)
-                    playPileRef.current = newPlayPile
-                }
-
-                if (nextTurn) {
-                    setCurrentTurn(nextTurn)
-                    currentTurnRef.current = nextTurn
-                }
-
+                if (newDeck) { setDeckState(newDeck); deckRef.current = newDeck }
+                if (newPlayPile) { setPlayPile(newPlayPile); playPileRef.current = newPlayPile }
+                if (nextTurn) { setCurrentTurn(nextTurn); currentTurnRef.current = nextTurn }
                 audioManager.play('drawCard')
                 break
             }
-        
+
+            // ── KEY FIX: DRAW_CARD_UPDATE now uses handCount to update
+            //    every observer's view of the drawing player ──────────────
             case 'DRAW_CARD_UPDATE': {
-                const { newHand, newDeck, newPlayPile, playerId: drawPlayerId, updatedPlayers: receivedUpdatedPlayers } = payload
-                
-                console.log('Applying draw card update for player:', drawPlayerId)
-                
-                let updatedPlayers = [...playersRef.current]
-                
-                // If we have received updated players data, use it to update hands
-                if (receivedUpdatedPlayers && Array.isArray(receivedUpdatedPlayers)) {
-                    updatedPlayers = playersRef.current.map((existingPlayer) => {
-                        const receivedPlayer = receivedUpdatedPlayers.find((p: any) => p.id === existingPlayer.id)
-                        if (!receivedPlayer) return existingPlayer
-                        
-                        const displayName = receivedPlayer.id === myPlayerIdRef.current ? `${receivedPlayer.name} (You)` : receivedPlayer.name
-                        
-                        let handToUse = existingPlayer.hand
-                        if (receivedPlayer.hand !== null && Array.isArray(receivedPlayer.hand) && receivedPlayer.hand.length > 0) {
-                            handToUse = receivedPlayer.hand.map((cardData: any) => 
-                                new Card(
-                                    cardData.color,
-                                    cardData.value,
-                                    cardData.points,
-                                    cardData.value === 0 || (cardData.value >= 1 && cardData.value <= 9),
-                                    cardData.drawValue,
-                                    cardData.src
-                                )
-                            )
-                        }
-                        
-                        return {
-                            ...existingPlayer,
-                            ...receivedPlayer,
-                            name: displayName,
-                            hand: handToUse,
-                            position: existingPlayer.position,
-                        }
-                    })
-                } else {
-                    // Fallback to just updating the player who drew the card
-                    updatedPlayers = playersRef.current.map(p =>
-                        p.id === drawPlayerId ? { ...p, hand: newHand } : p
+                const {
+                    playerId: drawPlayerId,
+                    handCount,        // NEW – total cards after drawing
+                    newDeck,
+                    newPlayPile,
+                } = payload
+
+                console.log(
+                    `DRAW_CARD_UPDATE: player ${drawPlayerId} now has ${handCount} cards`
+                )
+
+                const updatedPlayers = playersRef.current.map(p => {
+                    if (p.id !== drawPlayerId) return p
+
+                    // If it's my own player, keep real cards but pad/trim length
+                    if (drawPlayerId === myPlayerIdRef.current) {
+                        // shouldn't normally happen (we don't send to ourselves)
+                        return p
+                    }
+
+                    // For opponents: build a dummy hand of the correct length
+                    // so the card-back count shown is accurate
+                    const newCount: number =
+                        typeof handCount === 'number' ? handCount : p.hand.length + 1
+
+                    const dummyHand: CardType[] = Array.from(
+                        { length: newCount },
+                        (_, i) =>
+                            p.hand[i] ?? {
+                                color: 'any',
+                                value: -1,
+                                points: 0,
+                                changeTurn: false,
+                                drawValue: 0,
+                                src: '/images/back.png',
+                                playedByPlayer: false,
+                            }
                     )
-                }
-                
+                    return { ...p, hand: dummyHand }
+                })
+
                 setPlayers(updatedPlayers)
                 playersRef.current = updatedPlayers
-                
-                if (newDeck) {
-                    setDeckState(newDeck)
-                    deckRef.current = newDeck
-                }
-                if (newPlayPile) {
-                    setPlayPile(newPlayPile)
-                    playPileRef.current = newPlayPile
-                }
-                
+
+                if (newDeck)     { setDeckState(newDeck);       deckRef.current     = newDeck     }
+                if (newPlayPile) { setPlayPile(newPlayPile);     playPileRef.current = newPlayPile }
+
                 audioManager.play('drawCard')
                 break
             }
-        
+
             case 'COLOR_CHOSEN': {
                 const { color, newPlayPile, nextTurn } = payload
-
                 if (newPlayPile) {
                     setPlayPile(newPlayPile)
                     playPileRef.current = newPlayPile
@@ -556,129 +556,105 @@ export default function UnoGame() {
                     setPlayPile(updatedPile)
                     playPileRef.current = updatedPile
                 }
-
                 setColorPickerOpen(false)
                 colorPickerRef.current = false
                 setWildCardColor(color)
                 setSelectedWildColor(color)
                 selectedWildColorRef.current = color
-
-                if (nextTurn) {
-                    setCurrentTurn(nextTurn)
-                    currentTurnRef.current = nextTurn
-                }
+                if (nextTurn) { setCurrentTurn(nextTurn); currentTurnRef.current = nextTurn }
                 break
             }
-        
+
             case 'UNO_SHOUT': {
                 const { playerId: unoPlayerId } = payload
                 triggerUno(unoPlayerId || playerId)
                 break
             }
-        
+
             case 'ROUND_WINNER': {
                 const { winnerId, winnerName, updatedPlayers } = payload
-                
                 setRoundWinner(winnerId === myPlayerIdRef.current ? 'You' : winnerName)
                 setRoundVisible(true)
                 setGameOn(false)
                 gameOnRef.current = false
-
                 if (updatedPlayers && Array.isArray(updatedPlayers)) {
-                    const updatedPlayersWithHands = playersRef.current.map(p => {
-                        const updatedInfo = updatedPlayers.find((up: any) => up.id === p.id)
-                        if (updatedInfo) {
-                            const displayName = p.id === myPlayerIdRef.current ? `${updatedInfo.name} (You)` : updatedInfo.name
-                            return { ...p, score: updatedInfo.score, name: displayName }
-                        }
-                        return p
+                    const merged = playersRef.current.map(p => {
+                        const info = updatedPlayers.find((up: any) => up.id === p.id)
+                        if (!info) return p
+                        const displayName =
+                            p.id === myPlayerIdRef.current
+                                ? `${info.name} (You)`
+                                : info.name
+                        return { ...p, score: info.score, name: displayName }
                     })
-                    setPlayers(updatedPlayersWithHands)
-                    playersRef.current = updatedPlayersWithHands
+                    setPlayers(merged)
+                    playersRef.current = merged
                 }
-
-                setTimeout(() => {
-                    setRoundVisible(false)
-                }, 3000)
+                setTimeout(() => setRoundVisible(false), 3000)
                 break
             }
-        
+
             case 'GAME_WINNER': {
                 const { winnerId, winnerName, finalScores } = payload
-                
                 setGameWinner(winnerId === myPlayerIdRef.current ? 'You' : winnerName)
                 setGameVisible(true)
                 setGameOn(false)
                 gameOnRef.current = false
                 audioManager.play(winnerId === myPlayerIdRef.current ? 'winGame' : 'lose')
-                
                 if (finalScores && Array.isArray(finalScores)) {
-                    const updatedPlayersWithFinalScores = playersRef.current.map(p => {
-                        const finalInfo = finalScores.find((fs: any) => fs.id === p.id)
-                        if (finalInfo) {
-                            const displayName = p.id === myPlayerIdRef.current ? `${finalInfo.name} (You)` : finalInfo.name
-                            return { ...p, score: finalInfo.score, name: displayName }
-                        }
-                        return p
+                    const merged = playersRef.current.map(p => {
+                        const info = finalScores.find((fs: any) => fs.id === p.id)
+                        if (!info) return p
+                        const displayName =
+                            p.id === myPlayerIdRef.current
+                                ? `${info.name} (You)`
+                                : info.name
+                        return { ...p, score: info.score, name: displayName }
                     })
-                    setPlayers(updatedPlayersWithFinalScores)
-                    playersRef.current = updatedPlayersWithFinalScores
+                    setPlayers(merged)
+                    playersRef.current = merged
                 }
                 break
             }
-        
+
             case 'TURN_CHANGE': {
                 const { nextTurn, newDirection } = payload
-                if (nextTurn) {
-                    setCurrentTurn(nextTurn)
-                    currentTurnRef.current = nextTurn
-                }
-                if (newDirection) {
-                    setDirection(newDirection)
-                    directionRef.current = newDirection
-                }
+                if (nextTurn)     { setCurrentTurn(nextTurn);   currentTurnRef.current = nextTurn   }
+                if (newDirection) { setDirection(newDirection); directionRef.current   = newDirection }
                 break
             }
         }
     }, [triggerUno])
     // #endregion
-
     // #region INITIALIZE GAME FROM START
     const initializeGameFromStart = useCallback(async (payload: any) => {
         console.log('=== INITIALIZE GAME FROM START ===')
-        console.log('Received payload:', payload)
-        
-        const { playerOrder, startCard, players: playerInfo, firstTurn, direction: startDirection, drawAmount, drawPlayerId } = payload
-        
+        const {
+            playerOrder, startCard, players: playerInfo,
+            firstTurn, direction: startDirection, drawAmount, drawPlayerId,
+        } = payload
+
         setPlayerOrderState(playerOrder)
         playerOrderRef.current = playerOrder
-        
-        let myIndex = playerOrder.findIndex((id: Player['id']) => id === myPlayerIdRef.current)
-        
+
+        let myIndex = playerOrder.findIndex(
+            (id: Player['id']) => id === myPlayerIdRef.current
+        )
         if (myIndex === -1 && myPlayerNameRef.current) {
-            console.log(`Player ID ${myPlayerIdRef.current} not found, trying to find by name: ${myPlayerNameRef.current}`)
-            const myInfoIndex = playerInfo.findIndex((p: any) => p.name === myPlayerNameRef.current)
+            const myInfoIndex = playerInfo.findIndex(
+                (p: any) => p.name === myPlayerNameRef.current
+            )
             if (myInfoIndex !== -1) {
                 const correctId = playerOrder[myInfoIndex]
-                console.log(`Found by name match! Setting myPlayerId from ${myPlayerIdRef.current} to ${correctId}`)
                 setMyPlayerId(correctId)
                 myPlayerIdRef.current = correctId
                 myIndex = myInfoIndex
             }
         }
-        
-        if (myIndex === -1) {
-            console.warn('Could not find player in order, using index 0')
-            myIndex = 0
-        }
-        
+        if (myIndex === -1) myIndex = 0
+
         const playerCount = playerOrder.length
-        
-        console.log(`My index: ${myIndex}, My ID: ${myPlayerIdRef.current}, My Name: ${myPlayerNameRef.current}`)
-        console.log('Player order:', playerOrder)
-        
         const playerPositions: { [key: string]: Player['position'] } = {}
-        
         if (playerCount === 2) {
             playerPositions[playerOrder[myIndex]] = 'bottom'
             playerPositions[playerOrder[(myIndex + 1) % playerCount]] = 'top'
@@ -686,110 +662,75 @@ export default function UnoGame() {
             playerPositions[playerOrder[myIndex]] = 'bottom'
             playerPositions[playerOrder[(myIndex + 1) % playerCount]] = 'left'
             playerPositions[playerOrder[(myIndex + 2) % playerCount]] = 'right'
-        } else if (playerCount === 4) {
+        } else {
             playerPositions[playerOrder[myIndex]] = 'bottom'
             playerPositions[playerOrder[(myIndex + 1) % playerCount]] = 'left'
             playerPositions[playerOrder[(myIndex + 2) % playerCount]] = 'top'
             playerPositions[playerOrder[(myIndex + 3) % playerCount]] = 'right'
         }
-        
-        console.log('Player positions:', playerPositions)
-        
+
         const initializedPlayers: Player[] = playerInfo.map((info: any) => {
             const isMe = info.id === myPlayerIdRef.current
             const position = playerPositions[info.id] || (isMe ? 'bottom' : 'top')
             const displayName = isMe ? `${info.name} (You)` : info.name
-            
-            const hand = info.hand.map((cardData: any) => 
+            const hand = info.hand.map((cardData: any) =>
                 new Card(
-                    cardData.color,
-                    cardData.value,
-                    cardData.points,
+                    cardData.color, cardData.value, cardData.points,
                     cardData.value === 0 || (cardData.value >= 1 && cardData.value <= 9),
-                    cardData.drawValue,
-                    cardData.src
+                    cardData.drawValue, cardData.src
                 )
             )
-            
-            console.log(`Player ${info.id}: name=${displayName}, position=${position}, handSize=${hand.length}, isMe=${isMe}`)
-            
             return {
                 id: info.id as Player['id'],
-                hand: hand,
+                hand,
                 score: info.score || 0,
-                position: position,
+                position,
                 name: displayName,
                 isHuman: true,
             }
         })
-        
-        let startCardObj: CardType | null = null
+
+        let startCardObj: CardType = new Card(
+            'rgb(255, 6, 0)', 0, 0, true, 0, '/images/red0.png'
+        )
         if (startCard) {
             startCardObj = new Card(
-                startCard.color,
-                startCard.value,
-                startCard.points,
+                startCard.color, startCard.value, startCard.points,
                 startCard.value === 0 || (startCard.value >= 1 && startCard.value <= 9),
-                startCard.drawValue,
-                startCard.src
+                startCard.drawValue, startCard.src
             )
-        } else {
-            console.warn('No start card provided, creating default')
-            startCardObj = new Card('rgb(255, 6, 0)', 0, 0, true, 0, '/images/red0.png')
         }
-        
-        const newPlayPile = startCardObj ? [startCardObj] : []
-        let currentDeck = createDeck()
-        currentDeck = shuffleDeck(currentDeck)
-        let nextTurn = firstTurn
-        let currentPlayers = [...initializedPlayers]
-        
+
+        const newPlayPile = [startCardObj]
+        let currentDeck = shuffleDeck(createDeck())
+        const currentPlayers = [...initializedPlayers]
+
         if (drawAmount && drawAmount > 0 && drawPlayerId) {
-            const drawPlayer = currentPlayers.find(p => p.id === drawPlayerId)
-            if (drawPlayer) {
+            const dp = currentPlayers.find(p => p.id === drawPlayerId)
+            if (dp) {
                 for (let i = 0; i < drawAmount; i++) {
-                    if (currentDeck.length > 0) {
-                        drawPlayer.hand.push(currentDeck.shift()!)
-                    }
+                    if (currentDeck.length > 0) dp.hand.push(currentDeck.shift()!)
                 }
                 audioManager.play('plusCard')
             }
         }
-        
-        const isMyTurn = nextTurn === myPlayerIdRef.current
-        
-        console.log('Final players:', currentPlayers.map(p => ({ id: p.id, name: p.name, position: p.position, handSize: p.hand.length })))
-        
-        setPlayers(currentPlayers)
-        playersRef.current = currentPlayers
-        setDeckState(currentDeck)
-        deckRef.current = currentDeck
-        setPlayPile(newPlayPile)
-        playPileRef.current = newPlayPile
-        setCurrentTurn(nextTurn)
-        currentTurnRef.current = nextTurn
+
+        const isMyTurn = firstTurn === myPlayerIdRef.current
+        setPlayers(currentPlayers);       playersRef.current     = currentPlayers
+        setDeckState(currentDeck);        deckRef.current        = currentDeck
+        setPlayPile(newPlayPile);         playPileRef.current    = newPlayPile
+        setCurrentTurn(firstTurn);        currentTurnRef.current = firstTurn
         setDirection(startDirection || 'clockwise')
         directionRef.current = startDirection || 'clockwise'
-        setGameOn(true)
-        gameOnRef.current = true
-        setColorPickerOpen(false)
-        colorPickerRef.current = false
+        setGameOn(true);                  gameOnRef.current      = true
+        setColorPickerOpen(false);        colorPickerRef.current = false
         setMpState('playing')
-        
-        if (typeof document !== 'undefined') {
+        if (typeof document !== 'undefined')
             document.body.setAttribute('data-player-count', playerCount.toString())
-        }
-        
         audioManager.play('shuffle')
-        
-        setTimeout(() => {
-            if (isMyTurn) {
-                alert("It's your turn! 🎮")
-            }
-        }, 500)
+        setTimeout(() => { if (isMyTurn) alert("It's your turn! 🎮") }, 500)
     }, [])
     // #endregion
-
     // #region CHECK WINNER
     const checkForWinner = useCallback(async (currentPlayers?: Player[]) => {
         const cp = currentPlayers ?? playersRef.current
@@ -797,24 +738,27 @@ export default function UnoGame() {
         if (!winner) return false
 
         const updatedPlayers = cp.map(p => {
-            if (p.id === winner.id) {
-                const pts = cp.reduce((sum, pl) =>
-                    pl.id !== winner.id ? sum + tallyPoints(pl.hand) : sum, 0)
-                return { ...p, score: p.score + pts }
-            }
-            return p
+            if (p.id !== winner.id) return p
+            const pts = cp.reduce(
+                (sum, pl) => pl.id !== winner.id ? sum + tallyPoints(pl.hand) : sum, 0
+            )
+            return { ...p, score: p.score + pts }
         })
         setPlayers(updatedPlayers)
         playersRef.current = updatedPlayers
 
         const gameWinnerPlayer = updatedPlayers.find(p => p.score >= GAME_OVER_SCORE)
         if (gameWinnerPlayer) {
-            setGameOn(false)
-            gameOnRef.current = false
-            setGameWinner(gameWinnerPlayer.id === myPlayerIdRef.current ? 'You' : gameWinnerPlayer.name.replace(' (You)', ''))
+            setGameOn(false); gameOnRef.current = false
+            setGameWinner(
+                gameWinnerPlayer.id === myPlayerIdRef.current
+                    ? 'You'
+                    : gameWinnerPlayer.name.replace(' (You)', '')
+            )
             setGameVisible(true)
-            audioManager.play(gameWinnerPlayer.id === myPlayerIdRef.current ? 'winGame' : 'lose')
-            
+            audioManager.play(
+                gameWinnerPlayer.id === myPlayerIdRef.current ? 'winGame' : 'lose'
+            )
             if (gameModeRef.current === 'multiplayer') {
                 await broadcastAction('GAME_WINNER', {
                     winnerId: gameWinnerPlayer.id,
@@ -822,17 +766,19 @@ export default function UnoGame() {
                     finalScores: updatedPlayers.map(p => ({
                         id: p.id,
                         name: p.name.replace(' (You)', ''),
-                        score: p.score
-                    }))
+                        score: p.score,
+                    })),
                 })
             }
         } else {
-            setRoundWinner(winner.id === myPlayerIdRef.current ? 'You' : winner.name.replace(' (You)', ''))
+            setRoundWinner(
+                winner.id === myPlayerIdRef.current
+                    ? 'You'
+                    : winner.name.replace(' (You)', '')
+            )
             setRoundVisible(true)
-            setGameOn(false)
-            gameOnRef.current = false
+            setGameOn(false); gameOnRef.current = false
             audioManager.play('winRound')
-            
             if (gameModeRef.current === 'multiplayer') {
                 await broadcastAction('ROUND_WINNER', {
                     winnerId: winner.id,
@@ -845,116 +791,80 @@ export default function UnoGame() {
                     })),
                 })
             }
-            
-            if (gameModeRef.current === 'ai') {
-                setTimeout(() => setRoundVisible(false), 3000)
-            }
+            if (gameModeRef.current === 'ai') setTimeout(() => setRoundVisible(false), 3000)
         }
         return true
     }, [tallyPoints, broadcastAction])
     // #endregion
-
     // #region BIND CHANNEL EVENTS
     const bindChannelEvents = useCallback((channel: PusherChannel) => {
         channel.bind('game-action', (raw: unknown) => {
-            const gameAction = raw as GameAction
-            applyGameAction(gameAction)
+            applyGameAction(raw as GameAction)
         })
-
         channel.bind('game-started', (raw: unknown) => {
-            const payload = raw as any
-            console.log('Received game-started event:', payload)
-            initializeGameFromStart(payload)
+            initializeGameFromStart(raw as any)
         })
-
         channel.bind('player-joined', (raw: unknown) => {
             const data = raw as JoinPayload
-            console.log('Player joined:', data)
             setMpConnectedPlayers(prev => {
-                const exists = prev.find(p => p.id === data.playerId || p.name === data.playerName)
-                if (exists) return prev
-                console.log('Adding player to list:', data.playerName)
+                if (prev.find(p => p.id === data.playerId || p.name === data.playerName))
+                    return prev
                 return [...prev, { id: data.playerId, name: data.playerName }]
             })
         })
-
         channel.bind('player-left', (raw: unknown) => {
             const data = raw as { playerId: string; playerName?: string }
-            console.log('Player left:', data)
-            setMpConnectedPlayers(prev => {
-                const filtered = prev.filter(p => p.id !== data.playerId && p.name !== data.playerName)
-                console.log('Players after removal:', filtered)
-                return filtered
-            })
+            setMpConnectedPlayers(prev =>
+                prev.filter(p => p.id !== data.playerId && p.name !== data.playerName)
+            )
             setMpError('')
         })
-
         channel.bind('slot-assigned', (raw: unknown) => {
             const data = raw as SlotPayload
-            console.log('Slot assigned received:', data)
-            console.log('Current myPlayerNameRef:', myPlayerNameRef.current)
-            console.log('Current myPlayerId:', myPlayerIdRef.current)
-            
             if (data.playerId && data.playerName === myPlayerNameRef.current) {
-                console.log(`Setting myPlayerId from ${myPlayerIdRef.current} to ${data.playerId} (name match: ${data.playerName})`)
                 setMyPlayerId(data.playerId)
                 myPlayerIdRef.current = data.playerId
             }
-            
             if (data.allPlayers) {
-                const uniquePlayers = Array.from(
+                const unique = Array.from(
                     new Map(data.allPlayers.map(p => [p.name, p])).values()
                 )
-                console.log('Setting connected players from slot-assigned:', uniquePlayers)
-                setMpConnectedPlayers(uniquePlayers)
-                mpConnectedRef.current = uniquePlayers
+                setMpConnectedPlayers(unique)
+                mpConnectedRef.current = unique
             }
         })
-        
         channel.bind('players-updated', (raw: unknown) => {
             const data = raw as { allPlayers: { id: string; name: string }[] }
-            console.log('Players updated event received (non-host):', data)
             if (data.allPlayers) {
-                const uniquePlayers = Array.from(
+                const unique = Array.from(
                     new Map(data.allPlayers.map(p => [p.name, p])).values()
                 )
-                setMpConnectedPlayers(uniquePlayers)
-                mpConnectedRef.current = uniquePlayers
+                setMpConnectedPlayers(unique)
+                mpConnectedRef.current = unique
             }
         })
     }, [applyGameAction, initializeGameFromStart])
     // #endregion
-
     // #region CREATE ROOM
     const createRoom = useCallback(async () => {
         if (!myPlayerName.trim()) { setMpError('Please enter your name'); return }
         if (joiningRef.current) return
-        
         joiningRef.current = true
         try {
             const code = generateRoomCode()
-            setRoomCode(code)
-            roomCodeRef.current = code
+            setRoomCode(code); roomCodeRef.current = code
             setIsHost(true)
-            
-            const hostId = 'player'
-            setMyPlayerId(hostId)
-            myPlayerIdRef.current = hostId
+            const hostId: Player['id'] = 'player'
+            setMyPlayerId(hostId); myPlayerIdRef.current = hostId
             myPlayerNameRef.current = myPlayerName
-
             const pusher = await getPusherInstance() as { subscribe: (ch: string) => PusherChannel }
             const channel = pusher.subscribe(`uno-room-${code}`)
             setMpChannel(channel)
-
             const initialConnected = [{ id: hostId, name: myPlayerName }]
             setMpConnectedPlayers(initialConnected)
             mpConnectedRef.current = initialConnected
-
             bindChannelEvents(channel)
-            setMpState('waiting')
-            setMpError('')
-            
-            console.log('Room created - Host ID:', hostId, 'Name:', myPlayerName)
+            setMpState('waiting'); setMpError('')
         } catch (error) {
             console.error('Error creating room:', error)
             setMpError('Failed to create room. Please try again.')
@@ -963,50 +873,31 @@ export default function UnoGame() {
         }
     }, [myPlayerName, bindChannelEvents])
     // #endregion
-
     // #region JOIN ROOM
     const joinRoom = useCallback(async () => {
         if (!myPlayerName.trim())  { setMpError('Please enter your name');   return }
         if (!inputRoomCode.trim()) { setMpError('Please enter a room code'); return }
         if (joiningRef.current) return
-        
         joiningRef.current = true
         try {
             const code = inputRoomCode.toUpperCase().trim()
-            setRoomCode(code)
-            roomCodeRef.current = code
+            setRoomCode(code); roomCodeRef.current = code
             setIsHost(false)
-            
             myPlayerNameRef.current = myPlayerName
-            
-            const tempId = 'temp_' + Date.now() + '_' + Math.random().toString(36).substring(7)
-            setMyPlayerId(tempId as Player['id'])
-            myPlayerIdRef.current = tempId as Player['id']
-
+            const tempId = ('temp_' + Date.now() + '_' + Math.random().toString(36).substring(7)) as Player['id']
+            setMyPlayerId(tempId); myPlayerIdRef.current = tempId
             const pusher = await getPusherInstance() as { subscribe: (ch: string) => PusherChannel }
             const channel = pusher.subscribe(`uno-room-${code}`)
             setMpChannel(channel)
-
             bindChannelEvents(channel)
-
             setMpConnectedPlayers(prev => {
-                const exists = prev.find(p => p.name === myPlayerName)
-                if (!exists) {
-                    return [...prev, { id: tempId, name: myPlayerName }]
-                }
-                return prev
+                if (prev.find(p => p.name === myPlayerName)) return prev
+                return [...prev, { id: tempId, name: myPlayerName }]
             })
-
             await pusherTrigger(`uno-room-${code}`, 'player-joined', {
-                playerId:    tempId,
-                playerName:  myPlayerName,
-                requestSlot: true,
+                playerId: tempId, playerName: myPlayerName, requestSlot: true,
             })
-
-            setMpState('waiting')
-            setMpError('')
-            
-            console.log('Joined room - Temp ID:', tempId, 'Name:', myPlayerName)
+            setMpState('waiting'); setMpError('')
         } catch (error) {
             console.error('Error joining room:', error)
             setMpError('Failed to join room. Please try again.')
@@ -1015,326 +906,183 @@ export default function UnoGame() {
         }
     }, [myPlayerName, inputRoomCode, bindChannelEvents])
     // #endregion
-
     // #region HOST ASSIGNS SLOT
     useEffect(() => {
         if (!isHost || !mpChannel || gameMode !== 'multiplayer') return
-        
         const availableSlots: Player['id'][] = ['player', 'p2', 'p3', 'p4']
-        const assignedSlots: string[] = []
-        
-        const hostSlot = 'player'
-        assignedSlots.push(hostSlot)
-        
-        console.log('Host assigned to slot:', hostSlot)
-        console.log('Available slots for players:', availableSlots.filter(s => !assignedSlots.includes(s)))
-
+        const assignedSlots: string[] = ['player']
         const pendingJoins = new Set<string>()
 
         const handlePlayerJoined = async (raw: unknown) => {
             const data = raw as JoinPayload
             if (!data.requestSlot) return
-            
-            console.log('Processing player join request:', data)
-            
-            if (pendingJoins.has(data.playerId)) {
-                console.log('Already processing join for:', data.playerId)
-                return
-            }
+            if (pendingJoins.has(data.playerId)) return
             pendingJoins.add(data.playerId)
-            
             try {
-                const existingPlayer = mpConnectedRef.current.find(p => p.name === data.playerName)
-                if (existingPlayer) {
-                    console.log('Player with this name already exists:', data.playerName)
-                    return
-                }
-                
-                const nextSlot = availableSlots.find(slot => !assignedSlots.includes(slot))
-                
-                if (!nextSlot) {
-                    console.log('No available slots for player:', data.playerName)
-                    setMpError('Room is full! Max 4 players allowed.')
-                    return
-                }
-                
+                if (mpConnectedRef.current.find(p => p.name === data.playerName)) return
+                const nextSlot = availableSlots.find(s => !assignedSlots.includes(s))
+                if (!nextSlot) { setMpError('Room is full!'); return }
                 assignedSlots.push(nextSlot)
-                
-                console.log(`Assigning player ${data.playerName} to slot:`, nextSlot)
-                console.log(`Remaining slots:`, availableSlots.filter(s => !assignedSlots.includes(s)))
-                
-                const newPlayer = { id: nextSlot, name: data.playerName }
-                
                 const newConnected = [...mpConnectedRef.current]
-                const alreadyExists = newConnected.find(p => p.name === data.playerName)
-                if (!alreadyExists) {
-                    newConnected.push(newPlayer)
+                if (!newConnected.find(p => p.name === data.playerName)) {
+                    newConnected.push({ id: nextSlot, name: data.playerName })
                     setMpConnectedPlayers(newConnected)
                     mpConnectedRef.current = newConnected
-                    console.log('Updated connected players:', newConnected)
                 }
-
-                const slotPayload = {
-                    playerId: nextSlot,
-                    playerName: data.playerName,
-                    allPlayers: newConnected,
-                }
-                console.log('Sending slot-assigned payload:', slotPayload)
-                
-                await pusherTrigger(`uno-room-${roomCodeRef.current}`, 'slot-assigned', slotPayload)
-                
-                await pusherTrigger(`uno-room-${roomCodeRef.current}`, 'players-updated', {
-                    allPlayers: newConnected
+                await pusherTrigger(`uno-room-${roomCodeRef.current}`, 'slot-assigned', {
+                    playerId: nextSlot, playerName: data.playerName, allPlayers: newConnected,
                 })
-            } catch (error) {
-                console.error('Error handling player join:', error)
+                await pusherTrigger(`uno-room-${roomCodeRef.current}`, 'players-updated', {
+                    allPlayers: newConnected,
+                })
             } finally {
                 pendingJoins.delete(data.playerId)
             }
         }
 
         mpChannel.bind('player-joined', handlePlayerJoined)
-        
         mpChannel.bind('players-updated', (raw: unknown) => {
             const data = raw as { allPlayers: { id: string; name: string }[] }
-            console.log('Players updated event received:', data)
             if (data.allPlayers) {
-                const uniquePlayers = Array.from(
+                const unique = Array.from(
                     new Map(data.allPlayers.map(p => [p.name, p])).values()
                 )
-                setMpConnectedPlayers(uniquePlayers)
-                mpConnectedRef.current = uniquePlayers
-                console.log('Connected players updated from broadcast:', uniquePlayers)
+                setMpConnectedPlayers(unique)
+                mpConnectedRef.current = unique
             }
         })
-        
-        return () => {
-            mpChannel.unbind_all()
-        }
+        return () => { mpChannel.unbind_all() }
     }, [isHost, mpChannel, gameMode])
     // #endregion
-
     // #region SYNC PLAYER LIST
     useEffect(() => {
         if (!isHost || !mpChannel || gameMode !== 'multiplayer' || mpState !== 'waiting') return
-        
-        const syncInterval = setInterval(() => {
-            if (mpConnectedRef.current.length > 0) {
-                console.log('Syncing player list...')
+        const id = setInterval(() => {
+            if (mpConnectedRef.current.length > 0)
                 pusherTrigger(`uno-room-${roomCodeRef.current}`, 'players-updated', {
-                    allPlayers: mpConnectedRef.current
+                    allPlayers: mpConnectedRef.current,
                 }).catch(console.error)
-            }
         }, 5000)
-        
-        return () => clearInterval(syncInterval)
+        return () => clearInterval(id)
     }, [isHost, mpChannel, gameMode, mpState])
     // #endregion
-
-    // #region HANDLE PAGE LEAVE/CLEANUP
+    // #region PAGE LEAVE
     useEffect(() => {
-        const handleBeforeUnload = () => {
-            if (gameMode === 'multiplayer' && roomCode) {
+        const onUnload = () => {
+            if (gameMode === 'multiplayer' && roomCode)
                 pusherTrigger(`uno-room-${roomCode}`, 'player-left', {
                     playerId: myPlayerIdRef.current,
-                    playerName: myPlayerNameRef.current
+                    playerName: myPlayerNameRef.current,
                 }).catch(console.error)
-            }
         }
-
-        window.addEventListener('beforeunload', handleBeforeUnload)
-        
+        window.addEventListener('beforeunload', onUnload)
         return () => {
-            window.removeEventListener('beforeunload', handleBeforeUnload)
-            if (gameMode === 'multiplayer' && roomCode && myPlayerIdRef.current) {
+            window.removeEventListener('beforeunload', onUnload)
+            if (gameMode === 'multiplayer' && roomCode && myPlayerIdRef.current)
                 pusherTrigger(`uno-room-${roomCode}`, 'player-left', {
                     playerId: myPlayerIdRef.current,
-                    playerName: myPlayerNameRef.current
+                    playerName: myPlayerNameRef.current,
                 }).catch(console.error)
-            }
         }
     }, [gameMode, roomCode])
     // #endregion
-
     // #region START MULTIPLAYER GAME
     const startMultiplayerGame = useCallback(async () => {
         if (!isHost) return
         if (mpConnectedPlayers.length < 2) { setMpError('Need at least 2 players'); return }
 
         const playerOrder: Player['id'][] = mpConnectedPlayers.map(p => p.id as Player['id'])
-        const playerCount = playerOrder.length
-        
-        console.log('=== STARTING MULTIPLAYER GAME ===')
-        console.log('Player order:', playerOrder)
-        console.log('Player count:', playerCount)
-        console.log('My ID (host):', myPlayerIdRef.current)
-
-        const newPlayers: Player[] = mpConnectedPlayers.map((cp) => ({
-            id: cp.id as Player['id'],
-            hand: [],
-            score: 0,
-            position: 'top',
-            name: cp.name,
-            isHuman: true,
+        const newPlayers: Player[] = mpConnectedPlayers.map(cp => ({
+            id: cp.id as Player['id'], hand: [], score: 0,
+            position: 'top', name: cp.name, isHuman: true,
         }))
 
-        let newDeck = createDeck()
-        newDeck = shuffleDeck(newDeck)
+        let newDeck = shuffleDeck(createDeck())
+        for (let i = 0; i < 7; i++)
+            for (let j = 0; j < newPlayers.length; j++)
+                if (newDeck.length > 0) newPlayers[j].hand.push(newDeck.shift()!)
 
-        for (let i = 0; i < 7; i++) {
-            for (let j = 0; j < newPlayers.length; j++) {
-                if (newDeck.length > 0) {
-                    newPlayers[j].hand.push(newDeck.shift()!)
-                }
-            }
-        }
-
-        let startCardIndex = -1
-        let startCard: CardType | null = null
-        
+        let startCardIndex = -1, startCard: CardType | null = null
         for (let i = 0; i < newDeck.length; i++) {
-            const card = newDeck[i]
-            if (card.value >= 0 && card.value <= 9 && card.color !== 'any') {
-                startCardIndex = i
-                startCard = newDeck[i]
-                break
+            if (newDeck[i].value >= 0 && newDeck[i].value <= 9 && newDeck[i].color !== 'any') {
+                startCardIndex = i; startCard = newDeck[i]; break
             }
         }
-        
-        if (startCardIndex === -1) {
-            for (let i = 0; i < newDeck.length; i++) {
-                const card = newDeck[i]
-                if (card.color !== 'any') {
-                    startCardIndex = i
-                    startCard = newDeck[i]
-                    break
-                }
-            }
-        }
-        
-        if (startCardIndex !== -1 && startCard) {
-            newDeck.splice(startCardIndex, 1)
-        } else if (newDeck.length > 0) {
-            startCard = newDeck.shift()!
-        }
-        
-        const newPlayPile = startCard ? [startCard] : []
-        
-        console.log('Start card selected:', startCard?.value, startCard?.color)
-        
+        if (startCardIndex === -1)
+            for (let i = 0; i < newDeck.length; i++)
+                if (newDeck[i].color !== 'any') { startCardIndex = i; startCard = newDeck[i]; break }
+
+        if (startCardIndex !== -1 && startCard) newDeck.splice(startCardIndex, 1)
+        else if (newDeck.length > 0) startCard = newDeck.shift()!
+
         const firstPlayerIndex = Math.floor(Math.random() * playerOrder.length)
         let firstPlayer = playerOrder[firstPlayerIndex]
-        let drawAmount = 0
-        let drawPlayerId: Player['id'] | null = null
-        
-        if (startCard && startCard.value === 12) {
-            drawAmount = 2
-            audioManager.play('plusCard')
-            const nextPlayerIndex = (firstPlayerIndex + 1) % playerOrder.length
-            drawPlayerId = playerOrder[nextPlayerIndex]
-            const drawPlayer = newPlayers.find(p => p.id === drawPlayerId)
-            if (drawPlayer) {
-                for (let i = 0; i < drawAmount; i++) {
-                    if (newDeck.length > 0) {
-                        drawPlayer.hand.push(newDeck.shift()!)
-                    }
-                }
-            }
+        let drawAmount = 0, drawPlayerId: Player['id'] | null = null
+
+        if (startCard?.value === 12) {
+            drawAmount = 2; audioManager.play('plusCard')
+            const ni = (firstPlayerIndex + 1) % playerOrder.length
+            drawPlayerId = playerOrder[ni]
+            const dp = newPlayers.find(p => p.id === drawPlayerId)
+            if (dp) for (let i = 0; i < 2; i++) if (newDeck.length > 0) dp.hand.push(newDeck.shift()!)
             firstPlayer = drawPlayerId
-        } else if (startCard && startCard.value === 14) {
-            drawAmount = 4
-            audioManager.play('plusCard')
-            const nextPlayerIndex = (firstPlayerIndex + 1) % playerOrder.length
-            drawPlayerId = playerOrder[nextPlayerIndex]
-            const drawPlayer = newPlayers.find(p => p.id === drawPlayerId)
-            if (drawPlayer) {
-                for (let i = 0; i < drawAmount; i++) {
-                    if (newDeck.length > 0) {
-                        drawPlayer.hand.push(newDeck.shift()!)
-                    }
-                }
-            }
-            const colors = ['rgb(255, 6, 0)', 'rgb(0, 170, 69)', 'rgb(0, 150, 224)', 'rgb(255, 222, 0)']
-            const randomColor = colors[Math.floor(Math.random() * colors.length)]
-            if (startCard) startCard.color = randomColor
+        } else if (startCard?.value === 14) {
+            drawAmount = 4; audioManager.play('plusCard')
+            const ni = (firstPlayerIndex + 1) % playerOrder.length
+            drawPlayerId = playerOrder[ni]
+            const dp = newPlayers.find(p => p.id === drawPlayerId)
+            if (dp) for (let i = 0; i < 4; i++) if (newDeck.length > 0) dp.hand.push(newDeck.shift()!)
+            const cols = ['rgb(255, 6, 0)', 'rgb(0, 170, 69)', 'rgb(0, 150, 224)', 'rgb(255, 222, 0)']
+            if (startCard) startCard.color = cols[Math.floor(Math.random() * cols.length)]
             firstPlayer = drawPlayerId
-        } else if (startCard && startCard.value === 10) {
-            console.log('Reverse card - direction will be counter-clockwise')
-        } else if (startCard && startCard.value === 11) {
+        } else if (startCard?.value === 11) {
             firstPlayer = playerOrder[(firstPlayerIndex + 1) % playerOrder.length]
-            console.log(`Skip card! First player skipped, now ${firstPlayer}'s turn`)
         }
-        
-        console.log('Final first player:', firstPlayer)
 
-        setPlayers(newPlayers)
-        playersRef.current = newPlayers
-        setDeckState(newDeck)
-        deckRef.current = newDeck
-        setPlayPile(newPlayPile)
-        playPileRef.current = newPlayPile
-        setCurrentTurn(firstPlayer)
-        currentTurnRef.current = firstPlayer
-        setDirection('clockwise')
-        directionRef.current = 'clockwise'
-        setPlayerOrderState(playerOrder)
-        playerOrderRef.current = playerOrder
-        setGameOn(true)
-        gameOnRef.current = true
-        setColorPickerOpen(false)
-        colorPickerRef.current = false
+        setPlayers(newPlayers);             playersRef.current     = newPlayers
+        setDeckState(newDeck);              deckRef.current        = newDeck
+        setPlayPile(startCard ? [startCard] : []); playPileRef.current = startCard ? [startCard] : []
+        setCurrentTurn(firstPlayer);        currentTurnRef.current = firstPlayer
+        setDirection('clockwise');          directionRef.current   = 'clockwise'
+        setPlayerOrderState(playerOrder);   playerOrderRef.current = playerOrder
+        setGameOn(true);                    gameOnRef.current      = true
+        setColorPickerOpen(false);          colorPickerRef.current = false
         setMpState('playing')
-
         audioManager.play('shuffle')
 
-        const gameStartPayload = {
-            playerOrder: playerOrder,
+        await pusherTrigger(`uno-room-${roomCode}`, 'game-started', {
+            playerOrder,
             startCard: startCard ? {
-                color: startCard.color,
-                value: startCard.value,
-                points: startCard.points,
-                drawValue: startCard.drawValue,
-                src: startCard.src,
+                color: startCard.color, value: startCard.value,
+                points: startCard.points, drawValue: startCard.drawValue, src: startCard.src,
             } : null,
             players: newPlayers.map(p => ({
-                id: p.id,
-                name: p.name,
-                score: p.score,
-                hand: p.hand.map(card => ({
-                    color: card.color,
-                    value: card.value,
-                    points: card.points,
-                    changeTurn: card.changeTurn,
-                    drawValue: card.drawValue,
-                    src: card.src,
-                    playedByPlayer: card.playedByPlayer,
+                id: p.id, name: p.name, score: p.score,
+                hand: p.hand.map(c => ({
+                    color: c.color, value: c.value, points: c.points,
+                    changeTurn: c.changeTurn, drawValue: c.drawValue,
+                    src: c.src, playedByPlayer: c.playedByPlayer,
                 })),
             })),
             firstTurn: firstPlayer,
             direction: 'clockwise',
-            drawAmount: drawAmount,
-            drawPlayerId: drawPlayerId,
-        }
-        
-        console.log('Broadcasting game-started payload')
-        await pusherTrigger(`uno-room-${roomCode}`, 'game-started', gameStartPayload)
+            drawAmount,
+            drawPlayerId,
+        })
     }, [isHost, mpConnectedPlayers, roomCode])
     // #endregion
-
     // #region NEW AI GAME
     const newAIGame = useCallback((existingScores?: { [key: string]: number }) => {
-        setGameOn(true);                    gameOnRef.current      = true
-        setColorPickerOpen(false);          colorPickerRef.current = false
-        setWildCardColor('')
-        setSelectedWildColor('');           selectedWildColorRef.current = ''
-        setDirection('clockwise');          directionRef.current   = 'clockwise'
+        setGameOn(true);                      gameOnRef.current      = true
+        setColorPickerOpen(false);            colorPickerRef.current = false
+        setWildCardColor('');                 setSelectedWildColor('')
+        selectedWildColorRef.current = ''
+        setDirection('clockwise');            directionRef.current   = 'clockwise'
         setPlayerOrderState(AI_PLAYER_ORDER); playerOrderRef.current = AI_PLAYER_ORDER
-        setMyPlayerId('player');            myPlayerIdRef.current  = 'player'
-        setRoundVisible(false)
-        setGameVisible(false)
+        setMyPlayerId('player');              myPlayerIdRef.current  = 'player'
+        setRoundVisible(false);               setGameVisible(false)
 
-        let newDeck = createDeck()
-        newDeck = shuffleDeck(newDeck)
+        let newDeck = shuffleDeck(createDeck())
         audioManager.play('shuffle')
 
         const newPlayers: Player[] = [
@@ -1343,53 +1091,29 @@ export default function UnoGame() {
             { id: 'cpu2',   hand: [], score: existingScores?.cpu2   ?? 0, position: 'left',   name: 'CPU LEFT',  isHuman: false },
             { id: 'cpu3',   hand: [], score: existingScores?.cpu3   ?? 0, position: 'right',  name: 'CPU RIGHT', isHuman: false },
         ]
-
-        for (let i = 0; i < 7; i++) {
-            for (let j = 0; j < newPlayers.length; j++) {
+        for (let i = 0; i < 7; i++)
+            for (let j = 0; j < newPlayers.length; j++)
                 newPlayers[j].hand.push(newDeck.shift()!)
-            }
-        }
 
-        let startCardIndex = -1
-        let startCard: CardType | null = null
-        
+        let startCardIndex = -1, startCard: CardType | null = null
         for (let i = 0; i < newDeck.length; i++) {
-            const card = newDeck[i]
-            if (card.value >= 0 && card.value <= 9 && card.color !== 'any') {
-                startCardIndex = i
-                startCard = newDeck[i]
-                break
+            if (newDeck[i].value >= 0 && newDeck[i].value <= 9 && newDeck[i].color !== 'any') {
+                startCardIndex = i; startCard = newDeck[i]; break
             }
         }
-        
-        if (startCardIndex === -1) {
-            for (let i = 0; i < newDeck.length; i++) {
-                const card = newDeck[i]
-                if (card.color !== 'any') {
-                    startCardIndex = i
-                    startCard = newDeck[i]
-                    break
-                }
-            }
-        }
-        
-        if (startCardIndex !== -1 && startCard) {
-            newDeck.splice(startCardIndex, 1)
-        } else if (newDeck.length > 0) {
-            startCard = newDeck.shift()!
-        }
-        
-        const newPlayPile = startCard ? [startCard] : []
+        if (startCardIndex === -1)
+            for (let i = 0; i < newDeck.length; i++)
+                if (newDeck[i].color !== 'any') { startCardIndex = i; startCard = newDeck[i]; break }
+
+        if (startCardIndex !== -1 && startCard) newDeck.splice(startCardIndex, 1)
+        else if (newDeck.length > 0) startCard = newDeck.shift()!
 
         setPlayers(newPlayers);             playersRef.current     = newPlayers
         setDeckState(newDeck);              deckRef.current        = newDeck
-        setPlayPile(newPlayPile);           playPileRef.current    = newPlayPile
+        setPlayPile(startCard ? [startCard] : []); playPileRef.current = startCard ? [startCard] : []
         setCurrentTurn('player');           currentTurnRef.current = 'player'
-        
-        console.log('AI Game - Start card:', startCard?.value, startCard?.color)
     }, [])
     // #endregion
-
     // #region CPU LOGIC
     const playCPU = useCallback(async (cpuId: Player['id']) => {
         if (currentTurnRef.current !== cpuId) return
@@ -1405,133 +1129,95 @@ export default function UnoGame() {
         if (!cpu) return
 
         const currentPlayPile = [...playPileRef.current]
-        let currentDeck = [...deckRef.current]
+        const currentDeck = [...deckRef.current]
         const topCard = currentPlayPile[currentPlayPile.length - 1]
         const currentDir = directionRef.current
 
         const playable: CardType[] = []
         const remaining: CardType[] = []
-
         for (const card of cpu.hand) {
-            const canPlay = card.color === topCard.color || card.value === topCard.value || card.color === 'any' || topCard.color === 'any'
+            const canPlay = card.color === topCard.color || card.value === topCard.value ||
+                card.color === 'any' || topCard.color === 'any'
             canPlay ? playable.push(card) : remaining.push(card)
         }
 
         if (playable.length === 0) {
-            let newDeck = [...currentDeck]
-            let newPlayPile = [...currentPlayPile]
-            let newHand = [...cpu.hand]
-            let drawnCard: CardType | null = null
-
+            let newDeck = [...currentDeck], newPlayPile = [...currentPlayPile]
+            const newHand = [...cpu.hand]
             if (newDeck.length > 0) {
-                drawnCard = newDeck.shift()!
-                newHand.push(drawnCard)
+                newHand.push(newDeck.shift()!)
             } else if (newPlayPile.length > 1) {
-                const toShuffle = newPlayPile.slice(0, -1)
-                newDeck = shuffleDeck(toShuffle)
+                newDeck = shuffleDeck(newPlayPile.slice(0, -1))
                 newPlayPile = [newPlayPile[newPlayPile.length - 1]]
-                drawnCard = newDeck.shift()!
-                newHand.push(drawnCard)
+                newHand.push(newDeck.shift()!)
             }
-
             audioManager.play('drawCard')
             const updated = playersRef.current.map(p => p.id === cpuId ? { ...p, hand: newHand } : p)
-            setPlayers(updated)
-            playersRef.current = updated
-            setDeckState(newDeck)
-            deckRef.current = newDeck
-            setPlayPile(newPlayPile)
-            playPileRef.current = newPlayPile
-
+            setPlayers(updated); playersRef.current = updated
+            setDeckState(newDeck); deckRef.current = newDeck
+            setPlayPile(newPlayPile); playPileRef.current = newPlayPile
             const next = getNextTurn(cpuId, currentDir, order)
-            setCurrentTurn(next)
-            currentTurnRef.current = next
+            setCurrentTurn(next); currentTurnRef.current = next
             return
         }
 
-        let chosenCard = playable[0]
-        let leftover = [...remaining, ...playable.slice(1)]
-
+        const chosenCard = playable[0]
+        const leftover = [...remaining, ...playable.slice(1)]
         audioManager.playCardSound()
-
         const newPlayPile = [...currentPlayPile, { ...chosenCard, playedByPlayer: false }]
         const newCpuHand = [...leftover]
-
         let newDir = currentDir
         let nextTurn: Player['id']
 
         if (chosenCard.value === 10) {
             newDir = currentDir === 'clockwise' ? 'counter-clockwise' : 'clockwise'
-            setDirection(newDir)
-            directionRef.current = newDir
+            setDirection(newDir); directionRef.current = newDir
             nextTurn = getNextTurn(cpuId, newDir, order)
         } else if (chosenCard.value === 11) {
-            const skippedPlayer = getNextTurn(cpuId, newDir, order)
-            nextTurn = getNextTurn(skippedPlayer, newDir, order)
-            console.log(`CPU Skip card played! Skipping ${skippedPlayer}, next turn: ${nextTurn}`)
+            const skipped = getNextTurn(cpuId, newDir, order)
+            nextTurn = getNextTurn(skipped, newDir, order)
         } else if (chosenCard.drawValue > 0) {
             audioManager.play('plusCard')
-            const drawTargetPlayer = getNextTurn(cpuId, newDir, order)
-            const drawPlayerIndex = playersRef.current.findIndex(p => p.id === drawTargetPlayer)
-
-            if (drawPlayerIndex !== -1) {
-                const drawPlayer = playersRef.current[drawPlayerIndex]
-                let updDeck = [...currentDeck]
-                let updPile = [...newPlayPile]
-
+            const drawTarget = getNextTurn(cpuId, newDir, order)
+            const drawIdx = playersRef.current.findIndex(p => p.id === drawTarget)
+            if (drawIdx !== -1) {
+                const drawPlayer = { ...playersRef.current[drawIdx], hand: [...playersRef.current[drawIdx].hand] }
+                let updDeck = [...currentDeck], updPile = [...newPlayPile]
                 for (let i = 0; i < chosenCard.drawValue; i++) {
                     if (updDeck.length > 0) {
-                        const drawnCard = updDeck.shift()!
-                        drawPlayer.hand.push(drawnCard)
-                        audioManager.play('drawCard')
+                        drawPlayer.hand.push(updDeck.shift()!); audioManager.play('drawCard')
                     } else if (updPile.length > 1) {
-                        const toShuffle = updPile.slice(0, -1)
-                        updDeck = shuffleDeck(toShuffle)
+                        updDeck = shuffleDeck(updPile.slice(0, -1))
                         updPile = [updPile[updPile.length - 1]]
-                        const drawnCard = updDeck.shift()!
-                        drawPlayer.hand.push(drawnCard)
-                        audioManager.play('drawCard')
+                        drawPlayer.hand.push(updDeck.shift()!); audioManager.play('drawCard')
                     }
                 }
-                
-                const updatedPlayers = playersRef.current.map((p, idx) => 
-                    idx === drawPlayerIndex ? { ...p, hand: drawPlayer.hand } : p
+                const updatedPlayers = playersRef.current.map((p, i) =>
+                    i === drawIdx ? { ...p, hand: drawPlayer.hand } : p
                 )
-                setPlayers(updatedPlayers)
-                playersRef.current = updatedPlayers
-                setDeckState(updDeck)
-                deckRef.current = updDeck
-                setPlayPile(updPile)
-                playPileRef.current = updPile
+                setPlayers(updatedPlayers); playersRef.current = updatedPlayers
+                setDeckState(updDeck); deckRef.current = updDeck
+                setPlayPile(updPile); playPileRef.current = updPile
             }
-            
-            nextTurn = drawTargetPlayer
-            console.log(`CPU Draw card played! ${chosenCard.drawValue} cards drawn by ${drawTargetPlayer}, their turn begins`)
+            nextTurn = drawTarget
         } else {
             nextTurn = getNextTurn(cpuId, newDir, order)
         }
 
         if (chosenCard.color === 'any' && chosenCard.value === 13) {
-            const colours = ['rgb(255, 6, 0)', 'rgb(0, 170, 69)', 'rgb(0, 150, 224)', 'rgb(255, 222, 0)']
-            const picked = colours[Math.floor(Math.random() * colours.length)]
-            newPlayPile[newPlayPile.length - 1].color = picked
+            const cols = ['rgb(255, 6, 0)', 'rgb(0, 170, 69)', 'rgb(0, 150, 224)', 'rgb(255, 222, 0)']
+            newPlayPile[newPlayPile.length - 1].color = cols[Math.floor(Math.random() * cols.length)]
         }
 
         const updated = playersRef.current.map(p => p.id === cpuId ? { ...p, hand: newCpuHand } : p)
-        setPlayers(updated)
-        playersRef.current = updated
-        setPlayPile(newPlayPile)
-        playPileRef.current = newPlayPile
-
+        setPlayers(updated); playersRef.current = updated
+        setPlayPile(newPlayPile); playPileRef.current = newPlayPile
         if (newCpuHand.length === 1) triggerUno(cpuId)
         if (newCpuHand.length === 0) { await checkForWinner(); return }
-
-        setCurrentTurn(nextTurn)
-        currentTurnRef.current = nextTurn
+        setCurrentTurn(nextTurn); currentTurnRef.current = nextTurn
     }, [triggerUno, checkForWinner, getCpuDelay, getNextTurn])
     // #endregion
-
-    // #region DRAW PILE CLICK - FIXED FOR PROPER HAND UPDATE
+    // #region DRAW PILE CLICK  ← FIXED: broadcast handCount
     const handleDrawPileClick = useCallback(async () => {
         if (currentTurnRef.current !== myPlayerIdRef.current) return
         if (colorPickerRef.current) return
@@ -1543,21 +1229,18 @@ export default function UnoGame() {
 
         let newDeck = [...deckRef.current]
         let newPlayPile = [...playPileRef.current]
-        let newHand = [...player.hand]
+        const newHand = [...player.hand]
         let drawnCard: CardType | null = null
         const currentDir = directionRef.current
 
         if (newDeck.length > 0) {
             drawnCard = newDeck.shift()!
             newHand.push(drawnCard)
-            console.log(`Drew card: ${drawnCard.value} of ${drawnCard.color}, new hand size: ${newHand.length}`)
         } else if (newPlayPile.length > 1) {
-            const toShuffle = newPlayPile.slice(0, -1)
-            newDeck = shuffleDeck(toShuffle)
+            newDeck = shuffleDeck(newPlayPile.slice(0, -1))
             newPlayPile = [newPlayPile[newPlayPile.length - 1]]
             drawnCard = newDeck.shift()!
             newHand.push(drawnCard)
-            console.log(`Reshuffled and drew card: ${drawnCard.value} of ${drawnCard.color}, new hand size: ${newHand.length}`)
         } else {
             return
         }
@@ -1567,70 +1250,36 @@ export default function UnoGame() {
         const updatedPlayers = playersRef.current.map(p =>
             p.id === myPlayerIdRef.current ? { ...p, hand: newHand } : p
         )
-        
-        setPlayers(updatedPlayers)
-        playersRef.current = updatedPlayers
-        setDeckState(newDeck)
-        deckRef.current = newDeck
-        setPlayPile(newPlayPile)
-        playPileRef.current = newPlayPile
+        setPlayers(updatedPlayers);   playersRef.current = updatedPlayers
+        setDeckState(newDeck);        deckRef.current    = newDeck
+        setPlayPile(newPlayPile);     playPileRef.current = newPlayPile
 
-        // Broadcast the updated hand to all players
         if (gameModeRef.current === 'multiplayer') {
-            // Create a minimal update with the current player's new hand
-            const minimalUpdatedPlayers = playersRef.current.map(p => {
-                const isCurrentPlayer = p.id === myPlayerIdRef.current
-                return {
-                    id: p.id,
-                    name: p.name.replace(' (You)', ''),
-                    score: p.score,
-                    position: p.position,
-                    // Only send hand data for the current player who drew the card
-                    hand: isCurrentPlayer ? newHand.map(c => ({
-                        color: c.color,
-                        value: c.value,
-                        points: c.points,
-                        drawValue: c.drawValue,
-                        src: c.src,
-                    })) : null,
-                }
-            })
-            
+            // ── KEY FIX: send handCount so every other client updates the
+            //    card-back count for this player immediately ───────────────
             await broadcastAction('DRAW_CARD_UPDATE', {
-                newHand: newHand,
-                newDeck: newDeck,
-                newPlayPile: newPlayPile,
-                playerId: myPlayerIdRef.current,
-                updatedPlayers: minimalUpdatedPlayers,
+                playerId:  myPlayerIdRef.current,
+                handCount: newHand.length,   // ← NEW field
+                newDeck,
+                newPlayPile,
             })
         }
 
-        // Check if the drawn card can be played immediately
         if (drawnCard) {
             const topCard = newPlayPile[newPlayPile.length - 1]
-            const canPlay = drawnCard.color === topCard.color || 
-                           drawnCard.value === topCard.value || 
-                           drawnCard.color === 'any' || 
-                           topCard.color === 'any'
-            
-            if (canPlay) {
-                console.log('Drawn card can be played! Keeping turn to allow play.')
-                return
-            }
+            const canPlay =
+                drawnCard.color === topCard.color || drawnCard.value === topCard.value ||
+                drawnCard.color === 'any' || topCard.color === 'any'
+            if (canPlay) return   // keep turn so player can play the drawn card
         }
 
-        // If card can't be played, move to next player
         const nextTurn = getNextTurn(myPlayerIdRef.current, currentDir, order)
-        setCurrentTurn(nextTurn)
-        currentTurnRef.current = nextTurn
-
-        if (gameModeRef.current === 'multiplayer') {
+        setCurrentTurn(nextTurn); currentTurnRef.current = nextTurn
+        if (gameModeRef.current === 'multiplayer')
             await broadcastAction('TURN_CHANGE', { nextTurn })
-        }
     }, [getNextTurn, broadcastAction])
     // #endregion
-
-    // #region PLAYER CARD CLICK - FIXED FOR DRAW CARDS (NO DOUBLE PENALTY)
+    // #region PLAYER CARD CLICK
     const handlePlayerCardClick = useCallback(async (index: number) => {
         if (currentTurnRef.current !== myPlayerIdRef.current) return
         if (colorPickerRef.current) return
@@ -1645,11 +1294,12 @@ export default function UnoGame() {
         const card = player.hand[index]
         const currentDir = directionRef.current
 
-        const isPlayable = card.value === topCard.value || card.color === topCard.color || card.color === 'any' || topCard.color === 'any'
+        const isPlayable =
+            card.value === topCard.value || card.color === topCard.color ||
+            card.color === 'any' || topCard.color === 'any'
         if (!isPlayable) return
 
         audioManager.playCardSound()
-
         const newPlayerHand = player.hand.filter((_, i) => i !== index)
         const playedCard = { ...card, playedByPlayer: true }
         const newPlayPile = [...currentPlayPile, playedCard]
@@ -1657,196 +1307,132 @@ export default function UnoGame() {
         let newDir = currentDir
         if (playedCard.value === 10) {
             newDir = currentDir === 'clockwise' ? 'counter-clockwise' : 'clockwise'
-            setDirection(newDir)
-            directionRef.current = newDir
+            setDirection(newDir); directionRef.current = newDir
         }
 
         let updatedPlayers = playersRef.current.map(p =>
             p.id === myPlayerIdRef.current ? { ...p, hand: newPlayerHand } : p
         )
-
         let nextTurn: Player['id'] | null = null
         let drawnTargetPlayer: Player['id'] | null = null
 
-        // For draw cards, we DON'T draw cards locally - we let the broadcast action handle it
-        // This prevents double penalty
         if (playedCard.drawValue > 0) {
             audioManager.play('plusCard')
-            const drawTargetPlayer_temp = getNextTurn(myPlayerIdRef.current, newDir, order)
-            drawnTargetPlayer = drawTargetPlayer_temp
-            
-            // The player who drew the penalty cards gets the turn
+            drawnTargetPlayer = getNextTurn(myPlayerIdRef.current, newDir, order)
             nextTurn = drawnTargetPlayer
-            console.log(`Draw card played! ${playedCard.drawValue} cards will be drawn by ${drawnTargetPlayer}, their turn begins`)
-        } 
-        // Handle skip card (value 11) - THIS is the only card that skips a player
-        else if (playedCard.value === 11) {
-            const skippedPlayer = getNextTurn(myPlayerIdRef.current, newDir, order)
-            nextTurn = getNextTurn(skippedPlayer, newDir, order)
-            console.log(`Skip card played! Skipping ${skippedPlayer}, next turn: ${nextTurn}`)
+        } else if (playedCard.value === 11) {
+            const skipped = getNextTurn(myPlayerIdRef.current, newDir, order)
+            nextTurn = getNextTurn(skipped, newDir, order)
         }
 
-        setPlayers(updatedPlayers)
-        playersRef.current = updatedPlayers
-        setPlayPile(newPlayPile)
-        playPileRef.current = newPlayPile
+        setPlayers(updatedPlayers); playersRef.current = updatedPlayers
+        setPlayPile(newPlayPile);   playPileRef.current = newPlayPile
 
         if (newPlayerHand.length === 1) {
             triggerUno(myPlayerIdRef.current)
-            if (gameModeRef.current === 'multiplayer') {
+            if (gameModeRef.current === 'multiplayer')
                 await broadcastAction('UNO_SHOUT', { playerId: myPlayerIdRef.current })
-            }
         }
-
         if (newPlayerHand.length === 0) {
-            await checkForWinner(updatedPlayers)
-            return
+            await checkForWinner(updatedPlayers); return
         }
 
-        // Handle Wild Card (value 13)
+        // Wild card – open colour picker first
         if (playedCard.color === 'any' && playedCard.value === 13) {
             if (gameModeRef.current === 'multiplayer') {
-                const minimalUpdatedPlayers = playersRef.current.map(p => {
-                    const isCurrentPlayer = p.id === myPlayerIdRef.current
-                    const isDrawPlayer = playedCard.drawValue > 0 && p.id === drawnTargetPlayer
-                    
-                    return {
-                        id: p.id,
-                        name: p.name.replace(' (You)', ''),
-                        score: p.score,
-                        position: p.position,
-                        hand: (isCurrentPlayer || isDrawPlayer) ? updatedPlayers.find(up => up.id === p.id)?.hand.map(c => ({
-                            color: c.color,
-                            value: c.value,
-                            points: c.points,
-                            drawValue: c.drawValue,
-                            src: c.src,
-                        })) : null,
-                    }
-                })
-                
                 await broadcastAction('PLAY_CARD', {
                     card: playedCard,
                     newHand: newPlayerHand,
-                    newPlayPile: newPlayPile,
+                    newPlayPile,
                     newDirection: newDir !== currentDir ? newDir : null,
-                    nextTurn: null, // Don't change turn for wild card yet
+                    nextTurn: null,
                     drawAmount: playedCard.drawValue,
                     drawTargetPlayer: drawnTargetPlayer,
-                    updatedPlayers: minimalUpdatedPlayers,
+                    // ── send handCount for every player ──────────────────
+                    updatedPlayers: updatedPlayers.map(p => ({
+                        id: p.id,
+                        name: p.name.replace(' (You)', ''),
+                        score: p.score,
+                        handCount: p.hand.length,   // ← NEW
+                        // Only send real hand data for myself
+                        hand: p.id === myPlayerIdRef.current
+                            ? p.hand.map(c => ({
+                                color: c.color, value: c.value, points: c.points,
+                                drawValue: c.drawValue, src: c.src,
+                            }))
+                            : null,
+                    })),
                 })
             }
-            
-            setColorPickerOpen(true)
-            colorPickerRef.current = true
+            setColorPickerOpen(true); colorPickerRef.current = true
             return
         }
 
-        // For normal cards (no draw, no skip), move to next player
-        if (!playedCard.drawValue && playedCard.value !== 11 && !nextTurn) {
+        if (!playedCard.drawValue && playedCard.value !== 11 && !nextTurn)
             nextTurn = getNextTurn(myPlayerIdRef.current, newDir, order)
-        }
 
-        if (nextTurn) {
-            setCurrentTurn(nextTurn)
-            currentTurnRef.current = nextTurn
-        }
+        if (nextTurn) { setCurrentTurn(nextTurn); currentTurnRef.current = nextTurn }
 
         if (gameModeRef.current === 'multiplayer') {
-            const minimalUpdatedPlayers = playersRef.current.map(p => {
-                const isCurrentPlayer = p.id === myPlayerIdRef.current
-                const isDrawPlayer = playedCard.drawValue > 0 && p.id === drawnTargetPlayer
-                
-                return {
-                    id: p.id,
-                    name: p.name.replace(' (You)', ''),
-                    score: p.score,
-                    position: p.position,
-                    hand: (isCurrentPlayer || isDrawPlayer) ? updatedPlayers.find(up => up.id === p.id)?.hand.map(c => ({
-                        color: c.color,
-                        value: c.value,
-                        points: c.points,
-                        drawValue: c.drawValue,
-                        src: c.src,
-                    })) : null,
-                }
-            })
-            
             await broadcastAction('PLAY_CARD', {
                 card: playedCard,
                 newHand: newPlayerHand,
-                newPlayPile: newPlayPile,
+                newPlayPile,
                 newDirection: newDir !== currentDir ? newDir : null,
-                nextTurn: nextTurn,
+                nextTurn,
                 drawAmount: playedCard.drawValue,
                 drawTargetPlayer: drawnTargetPlayer,
-                updatedPlayers: minimalUpdatedPlayers,
+                // ── send handCount for every player ──────────────────────
+                updatedPlayers: updatedPlayers.map(p => ({
+                    id: p.id,
+                    name: p.name.replace(' (You)', ''),
+                    score: p.score,
+                    handCount: p.hand.length,   // ← NEW
+                    hand: p.id === myPlayerIdRef.current
+                        ? p.hand.map(c => ({
+                            color: c.color, value: c.value, points: c.points,
+                            drawValue: c.drawValue, src: c.src,
+                        }))
+                        : null,
+                })),
             })
         }
     }, [triggerUno, checkForWinner, getNextTurn, broadcastAction])
     // #endregion
-
     // #region COLOUR CHOSEN
     const handleColorChosen = useCallback(async (color: string) => {
         audioManager.play('colorButton')
         const order = playerOrderRef.current
         const newPile = [...playPileRef.current]
         const lastCard = newPile[newPile.length - 1]
-        if (lastCard && lastCard.value === 13) {
+        if (lastCard && lastCard.value === 13)
             newPile[newPile.length - 1] = { ...lastCard, color }
-        }
 
-        setPlayPile(newPile)
-        playPileRef.current = newPile
-        setColorPickerOpen(false)
-        colorPickerRef.current = false
-        setWildCardColor(color)
-        setSelectedWildColor(color)
+        setPlayPile(newPile);         playPileRef.current    = newPile
+        setColorPickerOpen(false);    colorPickerRef.current = false
+        setWildCardColor(color);      setSelectedWildColor(color)
         selectedWildColorRef.current = color
 
         const nextTurn = getNextTurn(myPlayerIdRef.current, directionRef.current, order)
-        setCurrentTurn(nextTurn)
-        currentTurnRef.current = nextTurn
+        setCurrentTurn(nextTurn); currentTurnRef.current = nextTurn
 
         if (gameModeRef.current === 'multiplayer') {
-            await broadcastAction('COLOR_CHOSEN', { 
-                color, 
-                nextTurn,
-                newPlayPile: newPile
-            })
-            
+            await broadcastAction('COLOR_CHOSEN', { color, nextTurn, newPlayPile: newPile })
             await broadcastAction('TURN_CHANGE', { nextTurn })
         }
     }, [getNextTurn, broadcastAction])
     // #endregion
-
     // #region AUTO CPU TURN
     useEffect(() => {
-        if (gameMode !== 'ai') return
-        if (!gameOn) return
-        if (colorPickerOpen) return
-        if (currentTurn === 'player') return
+        if (gameMode !== 'ai' || !gameOn || colorPickerOpen || currentTurn === 'player') return
         const p = players.find(pl => pl.id === currentTurn)
         if (p && !p.isHuman) playCPU(currentTurn)
     }, [currentTurn, gameOn, colorPickerOpen, playCPU, gameMode, players])
     // #endregion
-
-    // #region DEBUG LOGGING
-    useEffect(() => {
-        if (gameMode === 'multiplayer' && mpState === 'playing') {
-            console.log('=== CURRENT GAME STATE ===')
-            console.log('Current turn:', currentTurn)
-            console.log('My player ID:', myPlayerIdRef.current)
-            console.log('Players:', players.map(p => ({ id: p.id, name: p.name, position: p.position, handSize: p.hand?.length || 0 })))
-        }
-    }, [currentTurn, players, mpState, gameMode])
-    // #endregion
-
     // #region PLAY AGAIN
     const handlePlayAgain = useCallback(() => {
         audioManager.play('playAgain')
-        setGameVisible(false)
-        setRoundVisible(false)
+        setGameVisible(false); setRoundVisible(false)
         if (gameMode === 'ai') {
             const scores: { [key: string]: number } = {}
             playersRef.current.forEach(p => { scores[p.id] = p.score })
@@ -1856,49 +1442,36 @@ export default function UnoGame() {
         }
     }, [gameMode, newAIGame, isHost, startMultiplayerGame])
     // #endregion
-
     // #region DERIVED
-    const topCard = playPile[playPile.length - 1]
-    const myPlayer = players.find(p => p.id === myPlayerId)
+    const topCard    = playPile[playPile.length - 1]
+    const myPlayer   = players.find(p => p.id === myPlayerId)
     const otherPlayers = players.filter(p => p.id !== myPlayerId)
 
     const getCardName = (card: CardType) => {
         if (card.color === 'any') return card.drawValue === 4 ? 'Wild Draw 4' : 'Wild Card'
         const colorNames: Record<string, string> = {
-            'rgb(255, 6, 0)': 'Red',
-            'rgb(0, 170, 69)': 'Green',
-            'rgb(0, 150, 224)': 'Blue',
-            'rgb(255, 222, 0)': 'Yellow',
+            'rgb(255, 6, 0)': 'Red', 'rgb(0, 170, 69)': 'Green',
+            'rgb(0, 150, 224)': 'Blue', 'rgb(255, 222, 0)': 'Yellow',
         }
         const valueNames: Record<number, string> = {
             10: 'Reverse', 11: 'Skip', 12: 'Draw 2', 13: 'Wild', 14: 'Wild Draw 4',
         }
-        const v = valueNames[card.value] ?? card.value.toString()
-        return `${colorNames[card.color] ?? card.color} ${v}`
+        return `${colorNames[card.color] ?? card.color} ${valueNames[card.value] ?? card.value}`
     }
-
-    const getPositionClass = (pos: Player['position']) => {
-        if (pos === 'top') return 'cpu-top'
-        if (pos === 'left') return 'cpu-left'
-        if (pos === 'right') return 'cpu-right'
-        return ''
-    }
-
+    const getPositionClass = (pos: Player['position']) =>
+        pos === 'top' ? 'cpu-top' : pos === 'left' ? 'cpu-left' : pos === 'right' ? 'cpu-right' : ''
     const getDirectionDisplay = () =>
         direction === 'clockwise' ? 'CLOCKWISE →' : 'COUNTER-CLOCKWISE ←'
-    
     const getWildcardColorClass = (color: string) => {
-        if (color === 'rgb(255, 6, 0)') return 'red'
-        if (color === 'rgb(0, 170, 69)') return 'green'
+        if (color === 'rgb(255, 6, 0)')   return 'red'
+        if (color === 'rgb(0, 170, 69)')  return 'green'
         if (color === 'rgb(0, 150, 224)') return 'blue'
         if (color === 'rgb(255, 222, 0)') return 'yellow'
         return ''
     }
     // #endregion
-
     // =====================================================================
     // #region MENU
-    // =====================================================================
     if (gameMode === 'menu') {
         return (
             <main className="game-container" style={{
@@ -1906,65 +1479,40 @@ export default function UnoGame() {
                 alignItems: 'center', justifyContent: 'center', minHeight: '100vh',
             }}>
                 <div style={{
-                    background: 'rgba(0,0,0,0.75)',
-                    borderRadius: '2rem',
-                    padding: '3rem 4rem',
-                    textAlign: 'center',
-                    border: '2px solid rgba(255,215,0,0.4)',
-                    backdropFilter: 'blur(10px)',
+                    background: 'rgba(0,0,0,0.75)', borderRadius: '2rem',
+                    padding: '3rem 4rem', textAlign: 'center',
+                    border: '2px solid rgba(255,215,0,0.4)', backdropFilter: 'blur(10px)',
                 }}>
                     <h1 style={{
-                        fontSize: '4rem', fontWeight: 'bold',
-                        color: '#ffd700', textShadow: '0 0 20px rgba(255,215,0,0.5)',
-                        marginBottom: '0.5rem',
-                    }}>
-                        🃏 UNO
-                    </h1>
+                        fontSize: '4rem', fontWeight: 'bold', color: '#ffd700',
+                        textShadow: '0 0 20px rgba(255,215,0,0.5)', marginBottom: '0.5rem',
+                    }}>🃏 UNO</h1>
                     <p style={{ color: '#ccc', marginBottom: '2.5rem', fontSize: '1.2rem' }}>
                         Choose your game mode
                     </p>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
-                        <button
-                            onClick={() => {
-                                setGameMode('ai')
-                                gameModeRef.current = 'ai'
-                                newAIGame()
-                            }}
+                        <button onClick={() => { setGameMode('ai'); gameModeRef.current = 'ai'; newAIGame() }}
                             style={{
                                 padding: '1.2rem 3rem', fontSize: '1.4rem', fontWeight: 'bold',
                                 background: 'linear-gradient(135deg,#4caf50,#2e7d32)',
                                 color: 'white', border: 'none', borderRadius: '1rem',
                                 cursor: 'pointer', boxShadow: '0 4px 15px rgba(76,175,80,0.4)',
-                                transition: 'transform 0.15s',
-                            }}
-                        >
-                            🤖 Play vs AI
-                        </button>
-                        <button
-                            onClick={() => {
-                                setGameMode('multiplayer')
-                                gameModeRef.current = 'multiplayer'
-                            }}
+                            }}>🤖 Play vs AI</button>
+                        <button onClick={() => { setGameMode('multiplayer'); gameModeRef.current = 'multiplayer' }}
                             style={{
                                 padding: '1.2rem 3rem', fontSize: '1.4rem', fontWeight: 'bold',
                                 background: 'linear-gradient(135deg,#2196f3,#0d47a1)',
                                 color: 'white', border: 'none', borderRadius: '1rem',
                                 cursor: 'pointer', boxShadow: '0 4px 15px rgba(33,150,243,0.4)',
-                                transition: 'transform 0.15s',
-                            }}
-                        >
-                            🌐 Multiplayer
-                        </button>
+                            }}>🌐 Multiplayer</button>
                     </div>
                 </div>
             </main>
         )
     }
     // #endregion
-
     // =====================================================================
     // #region MULTIPLAYER LOBBY
-    // =====================================================================
     if (gameMode === 'multiplayer' && mpState !== 'playing') {
         return (
             <main className="game-container" style={{
@@ -1972,68 +1520,44 @@ export default function UnoGame() {
                 alignItems: 'center', justifyContent: 'center', minHeight: '100vh',
             }}>
                 <div style={{
-                    background: 'rgba(0,0,0,0.82)',
-                    borderRadius: '2rem', padding: '2.5rem 3rem',
-                    width: '100%', maxWidth: '480px',
-                    border: '2px solid rgba(33,150,243,0.4)',
-                    backdropFilter: 'blur(10px)',
+                    background: 'rgba(0,0,0,0.82)', borderRadius: '2rem',
+                    padding: '2.5rem 3rem', width: '100%', maxWidth: '480px',
+                    border: '2px solid rgba(33,150,243,0.4)', backdropFilter: 'blur(10px)',
                 }}>
                     <button
-                        onClick={() => { 
-                            if (roomCode && myPlayerIdRef.current) {
+                        onClick={() => {
+                            if (roomCode && myPlayerIdRef.current)
                                 pusherTrigger(`uno-room-${roomCode}`, 'player-left', {
                                     playerId: myPlayerIdRef.current,
-                                    playerName: myPlayerNameRef.current
+                                    playerName: myPlayerNameRef.current,
                                 }).catch(console.error)
-                            }
-                            setGameMode('menu')
-                            setMpState('lobby')
-                            setMpError('')
-                            setMpConnectedPlayers([])
-                            setRoomCode('')
+                            setGameMode('menu'); setMpState('lobby')
+                            setMpError(''); setMpConnectedPlayers([]); setRoomCode('')
                         }}
                         style={{
-                            background: 'transparent',
-                            border: '1px solid rgba(255,255,255,0.25)',
-                            color: '#ccc', padding: '0.4rem 1rem',
-                            borderRadius: '0.5rem', cursor: 'pointer',
-                            marginBottom: '1.5rem', fontSize: '0.9rem',
-                        }}
-                    >
-                        ← Back
-                    </button>
-
+                            background: 'transparent', border: '1px solid rgba(255,255,255,0.25)',
+                            color: '#ccc', padding: '0.4rem 1rem', borderRadius: '0.5rem',
+                            cursor: 'pointer', marginBottom: '1.5rem', fontSize: '0.9rem',
+                        }}>← Back</button>
                     <h2 style={{ color: '#2196f3', fontSize: '2rem', marginBottom: '1.5rem', textAlign: 'center' }}>
                         🌐 Multiplayer
                     </h2>
-
                     {mpState === 'lobby' && (
                         <>
                             <div style={{ marginBottom: '1.2rem' }}>
-                                <label style={{ color: '#ccc', display: 'block', marginBottom: '0.4rem' }}>
-                                    Your Name
-                                </label>
-                                <input
-                                    type="text"
-                                    value={myPlayerName}
+                                <label style={{ color: '#ccc', display: 'block', marginBottom: '0.4rem' }}>Your Name</label>
+                                <input type="text" value={myPlayerName}
                                     onChange={e => setMyPlayerName(e.target.value)}
-                                    placeholder="Enter your name…"
-                                    maxLength={16}
+                                    placeholder="Enter your name…" maxLength={16}
                                     style={{
-                                        width: '100%', padding: '0.8rem 1rem',
-                                        borderRadius: '0.7rem',
+                                        width: '100%', padding: '0.8rem 1rem', borderRadius: '0.7rem',
                                         border: '1px solid rgba(255,255,255,0.2)',
                                         background: 'rgba(255,255,255,0.1)',
                                         color: 'white', fontSize: '1rem',
-                                        boxSizing: 'border-box',
-                                        outline: 'none',
-                                    }}
-                                />
+                                        boxSizing: 'border-box', outline: 'none',
+                                    }} />
                             </div>
-
-                            <button
-                                onClick={createRoom}
-                                disabled={joiningRef.current}
+                            <button onClick={createRoom} disabled={joiningRef.current}
                                 style={{
                                     width: '100%', padding: '1rem', marginBottom: '1.5rem',
                                     background: 'linear-gradient(135deg,#4caf50,#2e7d32)',
@@ -2041,48 +1565,37 @@ export default function UnoGame() {
                                     cursor: joiningRef.current ? 'not-allowed' : 'pointer',
                                     opacity: joiningRef.current ? 0.6 : 1,
                                     fontSize: '1rem', fontWeight: 'bold',
-                                }}
-                            >
+                                }}>
                                 {joiningRef.current ? '⏳ Creating...' : '🏠 Create Room'}
                             </button>
-
                             <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '1.2rem' }}>
                                 <label style={{ color: '#ccc', display: 'block', marginBottom: '0.4rem' }}>
                                     Join with Room Code
                                 </label>
                                 <div style={{ display: 'flex', gap: '0.8rem' }}>
-                                    <input
-                                        type="text"
-                                        value={inputRoomCode}
+                                    <input type="text" value={inputRoomCode}
                                         onChange={e => setInputRoomCode(e.target.value.toUpperCase())}
-                                        placeholder="e.g. ABC123"
-                                        maxLength={6}
+                                        placeholder="e.g. ABC123" maxLength={6}
                                         style={{
-                                            flex: 1, padding: '0.8rem 1rem',
-                                            borderRadius: '0.7rem',
+                                            flex: 1, padding: '0.8rem 1rem', borderRadius: '0.7rem',
                                             border: '1px solid rgba(255,255,255,0.2)',
                                             background: 'rgba(255,255,255,0.1)',
                                             color: 'white', fontSize: '1rem',
                                             letterSpacing: '0.2em', outline: 'none',
-                                        }}
-                                    />
-                                    <button
-                                        onClick={joinRoom}
-                                        disabled={joiningRef.current}
+                                        }} />
+                                    <button onClick={joinRoom} disabled={joiningRef.current}
                                         style={{
                                             padding: '0.8rem 1.5rem',
                                             background: 'linear-gradient(135deg,#2196f3,#0d47a1)',
-                                            color: 'white', border: 'none',
-                                            borderRadius: '0.7rem', cursor: joiningRef.current ? 'not-allowed' : 'pointer',
+                                            color: 'white', border: 'none', borderRadius: '0.7rem',
+                                            cursor: joiningRef.current ? 'not-allowed' : 'pointer',
                                             opacity: joiningRef.current ? 0.6 : 1,
                                             fontSize: '1rem', fontWeight: 'bold',
-                                        }}
-                                    >
-                                        {joiningRef.current ? '⏳ Joining...' : 'Join'}
+                                        }}>
+                                        {joiningRef.current ? '⏳' : 'Join'}
                                     </button>
                                 </div>
                             </div>
-
                             {mpError && (
                                 <p style={{ color: '#f44336', marginTop: '1rem', textAlign: 'center' }}>
                                     ⚠️ {mpError}
@@ -2090,7 +1603,6 @@ export default function UnoGame() {
                             )}
                         </>
                     )}
-
                     {mpState === 'waiting' && (
                         <>
                             <div style={{
@@ -2103,40 +1615,29 @@ export default function UnoGame() {
                                 <p style={{
                                     fontSize: '3rem', fontWeight: 'bold', color: '#ffd700',
                                     letterSpacing: '0.3em', fontFamily: 'monospace',
-                                }}>
-                                    {roomCode}
-                                </p>
-                                <p style={{ color: '#aaa', fontSize: '0.85rem' }}>
-                                    Share this code with friends
-                                </p>
+                                }}>{roomCode}</p>
+                                <p style={{ color: '#aaa', fontSize: '0.85rem' }}>Share this code with friends</p>
                             </div>
-
                             <p style={{ color: '#ccc', marginBottom: '0.8rem' }}>
                                 Players ({mpConnectedPlayers.length}/4)
                             </p>
                             {mpConnectedPlayers.map((p, i) => (
                                 <div key={p.id} style={{
                                     display: 'flex', alignItems: 'center', gap: '0.8rem',
-                                    padding: '0.6rem 1rem',
-                                    background: 'rgba(255,255,255,0.05)',
+                                    padding: '0.6rem 1rem', background: 'rgba(255,255,255,0.05)',
                                     borderRadius: '0.5rem', marginBottom: '0.4rem',
                                 }}>
                                     <span style={{ color: '#4caf50' }}>✓</span>
                                     <span style={{ color: 'white' }}>{p.name}</span>
                                     {i === 0 && isHost && (
-                                        <span style={{
-                                            color: '#ffd700', fontSize: '0.8rem', marginLeft: 'auto',
-                                        }}>
-                                            HOST
-                                        </span>
+                                        <span style={{ color: '#ffd700', fontSize: '0.8rem', marginLeft: 'auto' }}>HOST</span>
                                     )}
                                 </div>
                             ))}
                             {Array.from({ length: Math.max(0, 4 - mpConnectedPlayers.length) }).map((_, i) => (
                                 <div key={`empty-${i}`} style={{
                                     display: 'flex', alignItems: 'center', gap: '0.8rem',
-                                    padding: '0.6rem 1rem',
-                                    background: 'rgba(255,255,255,0.02)',
+                                    padding: '0.6rem 1rem', background: 'rgba(255,255,255,0.02)',
                                     border: '1px dashed rgba(255,255,255,0.1)',
                                     borderRadius: '0.5rem', marginBottom: '0.4rem',
                                 }}>
@@ -2144,10 +1645,8 @@ export default function UnoGame() {
                                     <span style={{ color: '#555' }}>Waiting for player...</span>
                                 </div>
                             ))}
-
                             {isHost && (
-                                <button
-                                    onClick={startMultiplayerGame}
+                                <button onClick={startMultiplayerGame}
                                     disabled={mpConnectedPlayers.length < 2}
                                     style={{
                                         width: '100%', padding: '1rem', marginTop: '1rem',
@@ -2157,14 +1656,12 @@ export default function UnoGame() {
                                         color: 'white', border: 'none', borderRadius: '0.8rem',
                                         cursor: mpConnectedPlayers.length >= 2 ? 'pointer' : 'not-allowed',
                                         fontSize: '1.1rem', fontWeight: 'bold',
-                                    }}
-                                >
+                                    }}>
                                     {mpConnectedPlayers.length >= 2
                                         ? '🚀 Start Game!'
                                         : `⏳ Need at least 2 players (${mpConnectedPlayers.length} joined)`}
                                 </button>
                             )}
-
                             {!isHost && (
                                 <p style={{ color: '#aaa', textAlign: 'center', marginTop: '1rem' }}>
                                     ⏳ Waiting for host to start…
@@ -2177,43 +1674,30 @@ export default function UnoGame() {
         )
     }
     // #endregion
-
     // =====================================================================
     // #region GAME BOARD
-    // =====================================================================
     return (
         <main className="game-container">
             <button
                 onClick={() => {
-                    if (roomCode && myPlayerIdRef.current) {
+                    if (roomCode && myPlayerIdRef.current)
                         pusherTrigger(`uno-room-${roomCode}`, 'player-left', {
                             playerId: myPlayerIdRef.current,
-                            playerName: myPlayerNameRef.current
+                            playerName: myPlayerNameRef.current,
                         }).catch(console.error)
-                    }
-                    setGameMode('menu')
-                    setGameOn(false)
-                    gameOnRef.current = false
-                    setMpState('lobby')
-                    setMpConnectedPlayers([])
-                    setRoomCode('')
+                    setGameMode('menu'); setGameOn(false); gameOnRef.current = false
+                    setMpState('lobby'); setMpConnectedPlayers([]); setRoomCode('')
                 }}
                 style={{
                     position: 'fixed', top: '1rem', left: '1rem', zIndex: 200,
-                    background: 'rgba(0,0,0,0.6)',
-                    border: '1px solid rgba(255,255,255,0.2)',
+                    background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(255,255,255,0.2)',
                     color: '#ccc', padding: '0.4rem 0.8rem',
                     borderRadius: '0.5rem', cursor: 'pointer', fontSize: '0.85rem',
-                }}
-            >
-                ← Menu
-            </button>
+                }}>← Menu</button>
 
             <div style={{
                 position: 'fixed', top: '1rem', right: '1rem', zIndex: 200,
-                background: gameMode === 'ai'
-                    ? 'rgba(76,175,80,0.25)'
-                    : 'rgba(33,150,243,0.25)',
+                background: gameMode === 'ai' ? 'rgba(76,175,80,0.25)' : 'rgba(33,150,243,0.25)',
                 border: `1px solid ${gameMode === 'ai' ? '#4caf50' : '#2196f3'}`,
                 color: 'white', padding: '0.4rem 0.8rem',
                 borderRadius: '0.5rem', fontSize: '0.85rem',
@@ -2224,44 +1708,29 @@ export default function UnoGame() {
             {otherPlayers.map(op => {
                 const isMyTurn = currentTurn === op.id
                 const isVertical = op.position === 'left' || op.position === 'right'
-                
                 return (
                     <div key={op.id} className={`cpu-player ${getPositionClass(op.position)}`}>
                         <div className="cpu-info" style={{
-                            border: isMyTurn
-                                ? '3px solid #ffd700'
-                                : '2px solid transparent',
-                            borderRadius: '0.5rem',
-                            padding: '0.2rem 0.5rem',
+                            border: isMyTurn ? '3px solid #ffd700' : '2px solid transparent',
+                            borderRadius: '0.5rem', padding: '0.2rem 0.5rem',
                             background: isMyTurn ? 'rgba(255,215,0,0.2)' : 'rgba(0,0,0,0.5)',
                         }}>
-                            <div className="cpu-name">
-                                {op.name}
-                                {isMyTurn && ' 🎯'}
-                            </div>
+                            <div className="cpu-name">{op.name}{isMyTurn && ' 🎯'}</div>
                             <div style={{ fontSize: '0.75rem', color: '#aaa' }}>
                                 {op.hand.length} cards · {op.score} pts
                             </div>
                         </div>
-
                         <div className={isVertical ? 'cpu-hand-vertical' : 'cpu-hand'}>
                             {op.hand.map((_, i) => (
-                                <Image
-                                    key={i}
-                                    src={'/images/back.png'}
-                                    alt="card back"
-                                    width={isVertical ? 90 : 60}
-                                    height={isVertical ? 60 : 90}
-                                    className={isVertical ? 'cpu-card-vertical' : 'cpu-card'}
-                                />
+                                <Image key={i} src="/images/back.png" alt="card back"
+                                    width={isVertical ? 90 : 60} height={isVertical ? 60 : 90}
+                                    className={isVertical ? 'cpu-card-vertical' : 'cpu-card'} />
                             ))}
                         </div>
-
                         {showUno[op.id] && (
                             <div className={
-                                op.position === 'top' ? 'cpu-animation-top' :
-                                op.position === 'left' ? 'cpu-animation-left' :
-                                'cpu-animation-right'
+                                op.position === 'top'  ? 'cpu-animation-top'  :
+                                op.position === 'left' ? 'cpu-animation-left' : 'cpu-animation-right'
                             }>
                                 <Image src="/images/uno!.png" alt="UNO!" width={80} height={40} />
                             </div>
@@ -2273,19 +1742,16 @@ export default function UnoGame() {
             <div className="center-area">
                 <div className="turn-indicator">
                     <p className="turn-text">
-                        {currentTurn === myPlayerId ? (
-                            <span className="turn-player">🎮 YOUR TURN 🎮</span>
-                        ) : (
-                            <span className="turn-cpu">
+                        {currentTurn === myPlayerId
+                            ? <span className="turn-player">🎮 YOUR TURN 🎮</span>
+                            : <span className="turn-cpu">
                                 🎯 {players.find(p => p.id === currentTurn)?.name?.replace(' (You)', '')}&apos;s TURN
-                            </span>
-                        )}
+                              </span>}
                     </p>
                     <p style={{ fontSize: '1.1rem', marginTop: '0.4rem', color: '#ffd700' }}>
                         📍 {getDirectionDisplay()}
                     </p>
                 </div>
-
                 <div className="last-played">
                     <p>📋 Last Played</p>
                     <p className="last-played-card">
@@ -2298,62 +1764,43 @@ export default function UnoGame() {
                         )}
                     </p>
                 </div>
-
                 <div className="table-cards">
                     <div className="play-pile">
                         {topCard && (
                             <div style={{ position: 'relative', display: 'inline-block' }}>
-                                <Image
-                                    src={topCard.src}
-                                    alt="play pile"
-                                    width={120}
-                                    height={180}
-                                    style={{ borderRadius: '10px', boxShadow: '0 0.8rem 1.6rem rgba(0,0,0,0.35)' }}
-                                />
+                                <Image src={topCard.src} alt="play pile" width={120} height={180}
+                                    style={{ borderRadius: '10px', boxShadow: '0 0.8rem 1.6rem rgba(0,0,0,0.35)' }} />
                                 {(topCard.value === 13 || topCard.value === 14) && topCard.color !== 'any' && (
-                                    <div 
-                                        className={`wildcard-color-indicator ${getWildcardColorClass(topCard.color)}`}
+                                    <div className={`wildcard-color-indicator ${getWildcardColorClass(topCard.color)}`}
                                         style={{
-                                            position: 'absolute',
-                                            bottom: '8px',
-                                            right: '8px',
-                                            width: '24px',
-                                            height: '24px',
-                                            borderRadius: '50%',
+                                            position: 'absolute', bottom: '8px', right: '8px',
+                                            width: '24px', height: '24px', borderRadius: '50%',
                                             border: '2px solid white',
                                             boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
                                             backgroundColor: topCard.color,
-                                        }}
-                                    />
+                                        }} />
                                 )}
                             </div>
                         )}
                     </div>
-
-                    <div
-                        className="draw-pile"
-                        onClick={handleDrawPileClick}
+                    <div className="draw-pile" onClick={handleDrawPileClick}
                         style={{
                             cursor: currentTurn === myPlayerId && !colorPickerOpen && gameOn ? 'pointer' : 'not-allowed',
                             opacity: currentTurn === myPlayerId && !colorPickerOpen && gameOn ? 1 : 0.55,
-                        }}
-                    >
+                        }}>
                         <Image src="/images/back.png" alt="draw pile" width={120} height={180} />
                         <div className="draw-text">Draw Card</div>
                     </div>
                 </div>
-
                 <div style={{
                     display: 'flex', gap: '1.2rem', flexWrap: 'wrap',
                     justifyContent: 'center', marginTop: '0.8rem',
-                    background: 'rgba(0,0,0,0.45)',
-                    borderRadius: '0.8rem', padding: '0.6rem 1.2rem',
+                    background: 'rgba(0,0,0,0.45)', borderRadius: '0.8rem', padding: '0.6rem 1.2rem',
                 }}>
                     {players.map(p => (
                         <span key={p.id} style={{
                             color: p.id === myPlayerId ? '#ffd700' : '#ccc',
-                            fontWeight: p.id === myPlayerId ? 'bold' : 'normal',
-                            fontSize: '0.88rem',
+                            fontWeight: p.id === myPlayerId ? 'bold' : 'normal', fontSize: '0.88rem',
                         }}>
                             {p.id === myPlayerId ? '👤' : '👥'} {p.name}: {p.score}
                         </span>
@@ -2364,32 +1811,23 @@ export default function UnoGame() {
             <div className="player-bottom">
                 <div className="player-info">
                     <div className="player-name">
-                        {myPlayer?.name ?? 'YOU'}
-                        {currentTurn === myPlayerId && ' 🎯'}
+                        {myPlayer?.name ?? 'YOU'}{currentTurn === myPlayerId && ' 🎯'}
                     </div>
                     <div style={{ fontSize: '0.8rem', color: '#aaa' }}>
                         {myPlayer?.hand.length ?? 0} cards · {myPlayer?.score ?? 0} pts
                     </div>
                 </div>
-
                 <div className="player-hand">
                     {(myPlayer?.hand ?? []).map((card, i) => {
                         const tc = playPile[playPile.length - 1]
                         const playable = tc && (
-                            card.value === tc.value ||
-                            card.color === tc.color ||
-                            card.color === 'any' ||
-                            tc.color === 'any'
+                            card.value === tc.value || card.color === tc.color ||
+                            card.color === 'any' || tc.color === 'any'
                         )
                         const canAct = currentTurn === myPlayerId && !colorPickerOpen && gameOn
                         return (
-                            <Image
-                                key={i}
-                                src={card.src}
-                                alt={`card-${i}`}
-                                width={80}
-                                height={120}
-                                className="player-card"
+                            <Image key={i} src={card.src} alt={`card-${i}`}
+                                width={80} height={120} className="player-card"
                                 onClick={() => handlePlayerCardClick(i)}
                                 style={{
                                     cursor: canAct && playable ? 'pointer' : 'not-allowed',
@@ -2397,12 +1835,10 @@ export default function UnoGame() {
                                     transform: canAct && playable ? 'translateY(-10px)' : 'none',
                                     outline: canAct && playable ? '2px solid rgba(255,215,0,0.7)' : 'none',
                                     borderRadius: '6px',
-                                }}
-                            />
+                                }} />
                         )
                     })}
                 </div>
-
                 {showUno[myPlayerId] && (
                     <div className="player-animation">
                         <Image src="/images/uno!.png" alt="UNO!" width={100} height={50} />
@@ -2414,27 +1850,25 @@ export default function UnoGame() {
                 <div className="color-picker">
                     <p>🎨 SELECT A COLOR 🎨</p>
                     <div>
-                        <button className="red" onClick={() => handleColorChosen('rgb(255, 6, 0)')}>🔴 RED</button>
-                        <button className="green" onClick={() => handleColorChosen('rgb(0, 170, 69)')}>🟢 GREEN</button>
-                        <button className="blue" onClick={() => handleColorChosen('rgb(0, 150, 224)')}>🔵 BLUE</button>
+                        <button className="red"    onClick={() => handleColorChosen('rgb(255, 6, 0)')}>🔴 RED</button>
+                        <button className="green"  onClick={() => handleColorChosen('rgb(0, 170, 69)')}>🟢 GREEN</button>
+                        <button className="blue"   onClick={() => handleColorChosen('rgb(0, 150, 224)')}>🔵 BLUE</button>
                         <button className="yellow" onClick={() => handleColorChosen('rgb(255, 222, 0)')}>🟡 YELLOW</button>
                     </div>
                 </div>
             )}
-
             {roundVisible && (
                 <div className="end-of-round">
                     <p>🏆 {roundWinner} won the round!</p>
                 </div>
             )}
-
             {gameVisible && (
                 <div className="end-of-game">
                     <p>🎉 {gameWinner} won the game!</p>
                     {(gameMode === 'ai' || isHost) && (
                         <button onClick={handlePlayAgain}>Play Again</button>
                     )}
-                    <button onClick={() => { setGameVisible(false); setGameMode('menu'); setMpState('lobby'); }}>
+                    <button onClick={() => { setGameVisible(false); setGameMode('menu'); setMpState('lobby') }}>
                         Main Menu
                     </button>
                 </div>
