@@ -382,16 +382,15 @@ export default function UnoGame() {
 
                             const dummyHand: CardType[] = Array.from(
                                 { length: targetCount },
-                                (_, i) =>
-                                    existingPlayer.hand[i] ?? {
-                                        color: 'any',
-                                        value: -1,
-                                        points: 0,
-                                        changeTurn: false,
-                                        drawValue: 0,
-                                        src: '/images/back.png',
-                                        playedByPlayer: false,
-                                    }
+                                () => ({
+                                    color: 'any',
+                                    value: -1,
+                                    points: 0,
+                                    changeTurn: false,
+                                    drawValue: 0,
+                                    src: '/images/back.png',
+                                    playedByPlayer: false,
+                                } as CardType)
                             )
                             return {
                                 ...existingPlayer,
@@ -517,32 +516,24 @@ export default function UnoGame() {
 
                 console.log(`DRAW_CARD_UPDATE: Player ${drawPlayerId} now has ${handCount} cards`)
 
+                // Completely replace the player's hand with card backs of the correct count
                 const updatedPlayers = playersRef.current.map(p => {
                     if (p.id !== drawPlayerId) return p
                     
-                    const newHandSize = handCount
-                    const currentHand = p.hand
-                    
-                    if (currentHand.length === newHandSize) return p
-                    
                     const newHand: CardType[] = []
-                    for (let i = 0; i < newHandSize; i++) {
-                        if (i < currentHand.length && currentHand[i] && currentHand[i].src !== '/images/back.png') {
-                            newHand.push(currentHand[i])
-                        } else {
-                            newHand.push({
-                                color: 'any',
-                                value: -1,
-                                points: 0,
-                                changeTurn: false,
-                                drawValue: 0,
-                                src: '/images/back.png',
-                                playedByPlayer: false,
-                            } as CardType)
-                        }
+                    for (let i = 0; i < handCount; i++) {
+                        newHand.push({
+                            color: 'any',
+                            value: -1,
+                            points: 0,
+                            changeTurn: false,
+                            drawValue: 0,
+                            src: '/images/back.png',
+                            playedByPlayer: false,
+                        } as CardType)
                     }
                     
-                    console.log(`Updated ${p.name}'s hand from ${currentHand.length} to ${newHandSize} cards`)
+                    console.log(`Updated ${p.name}'s hand from ${p.hand.length} to ${handCount} cards`)
                     return { ...p, hand: newHand }
                 })
 
@@ -558,7 +549,9 @@ export default function UnoGame() {
                     playPileRef.current = newPlayPile
                 }
 
+                // Force immediate UI update
                 setShowUno(prev => ({ ...prev }))
+                
                 audioManager.play('drawCard')
                 break
             }
@@ -1480,19 +1473,10 @@ export default function UnoGame() {
     }, [currentTurn, gameOn, colorPickerOpen, playCPU, gameMode, players])
     // #endregion
 
-    // #region FORCE UI UPDATE ON HAND CHANGE
+    // #region DEBUG HAND CHANGES
     useEffect(() => {
         if (gameMode === 'multiplayer' && mpState === 'playing') {
-            setPlayers(prev => {
-                let changed = false
-                const newPlayers = prev.map((p, i) => {
-                    if (p.hand.length !== playersRef.current[i]?.hand.length) {
-                        changed = true
-                    }
-                    return p
-                })
-                return changed ? [...prev] : prev
-            })
+            console.log('Current hand sizes:', players.map(p => ({ name: p.name, handSize: p.hand.length })))
         }
     }, [players, gameMode, mpState])
     // #endregion
