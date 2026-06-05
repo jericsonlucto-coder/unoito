@@ -354,8 +354,6 @@ export default function UnoGame() {
                         const existingPlayer = playersRef.current.find(ex => ex.id === p.id)
                         const displayName = p.id === myPlayerIdRef.current ? `${p.name} (You)` : p.name
                         
-                        // For the current player, preserve their hand if it has more cards
-                        // (meaning they drew cards but didn't play them yet)
                         let handToUse = p.hand.map((cardData: any) => 
                             new Card(
                                 cardData.color,
@@ -367,8 +365,6 @@ export default function UnoGame() {
                             )
                         )
                         
-                        // If this is the current player and we have a larger hand locally,
-                        // it means we drew cards, so preserve our local hand
                         if (p.id === myPlayerIdRef.current && existingPlayer && existingPlayer.hand.length > handToUse.length) {
                             console.log(`Preserving local hand for ${p.id}: ${existingPlayer.hand.length} vs received ${handToUse.length}`)
                             handToUse = existingPlayer.hand
@@ -492,10 +488,19 @@ export default function UnoGame() {
             case 'COLOR_CHOSEN': {
                 const { color, newPlayPile, nextTurn } = payload
 
-                const updatedPile = [...playPileRef.current]
-                updatedPile[updatedPile.length - 1] = { ...updatedPile[updatedPile.length - 1], color }
-                setPlayPile(updatedPile)
-                playPileRef.current = updatedPile
+                if (newPlayPile) {
+                    setPlayPile(newPlayPile)
+                    playPileRef.current = newPlayPile
+                } else {
+                    const updatedPile = [...playPileRef.current]
+                    const lastCard = updatedPile[updatedPile.length - 1]
+                    // Only update color for Wild Card (value 13)
+                    if (lastCard.value === 13) {
+                        updatedPile[updatedPile.length - 1] = { ...lastCard, color }
+                    }
+                    setPlayPile(updatedPile)
+                    playPileRef.current = updatedPile
+                }
 
                 setColorPickerOpen(false)
                 colorPickerRef.current = false
@@ -593,10 +598,8 @@ export default function UnoGame() {
         setPlayerOrderState(playerOrder)
         playerOrderRef.current = playerOrder
         
-        // Try to find player by ID first
         let myIndex = playerOrder.findIndex((id: Player['id']) => id === myPlayerIdRef.current)
         
-        // If not found by ID, try to find by name match
         if (myIndex === -1 && myPlayerNameRef.current) {
             console.log(`Player ID ${myPlayerIdRef.current} not found, trying to find by name: ${myPlayerNameRef.current}`)
             const myInfoIndex = playerInfo.findIndex((p: any) => p.name === myPlayerNameRef.current)
@@ -609,7 +612,6 @@ export default function UnoGame() {
             }
         }
         
-        // If still not found, use index 0 as fallback
         if (myIndex === -1) {
             console.warn('Could not find player in order, using index 0')
             myIndex = 0
@@ -996,7 +998,6 @@ export default function UnoGame() {
             }
         }
 
-        // Find a valid start card (number card 0-9)
         let startCardIndex = -1
         let startCard: CardType | null = null
         
@@ -1272,7 +1273,8 @@ export default function UnoGame() {
             directionRef.current = newDir
         }
 
-        if (chosenCard.color === 'any' && chosenCard.drawValue === 0) {
+        // Only show color picker for Wild Card (value 13), not for Wild Draw 4 (value 14)
+        if (chosenCard.color === 'any' && chosenCard.value === 13) {
             const colours = ['rgb(255, 6, 0)', 'rgb(0, 170, 69)', 'rgb(0, 150, 224)', 'rgb(255, 222, 0)']
             const picked = colours[Math.floor(Math.random() * colours.length)]
             newPlayPile[newPlayPile.length - 1].color = picked
@@ -1293,7 +1295,7 @@ export default function UnoGame() {
     }, [triggerUno, checkForWinner, getCpuDelay, getNextTurn])
     // #endregion
 
-    // #region DRAW PILE CLICK - FIXED
+    // #region DRAW PILE CLICK
     const handleDrawPileClick = useCallback(async () => {
         if (currentTurnRef.current !== myPlayerIdRef.current) return
         if (colorPickerRef.current) return
@@ -1330,7 +1332,6 @@ export default function UnoGame() {
             p.id === myPlayerIdRef.current ? { ...p, hand: newHand } : p
         )
         
-        // Update local state immediately
         setPlayers(updatedPlayers)
         playersRef.current = updatedPlayers
         setDeckState(newDeck)
@@ -1338,7 +1339,6 @@ export default function UnoGame() {
         setPlayPile(newPlayPile)
         playPileRef.current = newPlayPile
 
-        // Broadcast the draw card update so others see the hand size change
         if (gameModeRef.current === 'multiplayer') {
             await broadcastAction('DRAW_CARD_UPDATE', {
                 newHand: newHand,
@@ -1348,7 +1348,6 @@ export default function UnoGame() {
             })
         }
 
-        // Check if the drawn card can be played immediately
         if (drawnCard) {
             const topCard = newPlayPile[newPlayPile.length - 1]
             const canPlay = drawnCard.color === topCard.color || 
@@ -1362,7 +1361,6 @@ export default function UnoGame() {
             }
         }
 
-        // If card can't be played, move to next player
         const nextTurn = getNextTurn(myPlayerIdRef.current, currentDir, order)
         setCurrentTurn(nextTurn)
         currentTurnRef.current = nextTurn
@@ -1460,7 +1458,8 @@ export default function UnoGame() {
             return
         }
 
-        if (playedCard.color === 'any' && playedCard.drawValue === 0) {
+        // Only show color picker for Wild Card (value 13), not for Wild Draw 4 (value 14)
+        if (playedCard.color === 'any' && playedCard.value === 13) {
             setColorPickerOpen(true)
             colorPickerRef.current = true
             return
@@ -1500,12 +1499,16 @@ export default function UnoGame() {
     }, [triggerUno, checkForWinner, getNextTurn, broadcastAction])
     // #endregion
 
-    // #region COLOUR CHOSEN
+    // #region COLOUR CHOSEN - FIXED
     const handleColorChosen = useCallback(async (color: string) => {
         audioManager.play('colorButton')
         const order = playerOrderRef.current
         const newPile = [...playPileRef.current]
-        newPile[newPile.length - 1] = { ...newPile[newPile.length - 1], color }
+        // Only update color for Wild Card (value 13)
+        const lastCard = newPile[newPile.length - 1]
+        if (lastCard.value === 13) {
+            newPile[newPile.length - 1] = { ...lastCard, color }
+        }
 
         setPlayPile(newPile)
         playPileRef.current = newPile
@@ -1520,7 +1523,11 @@ export default function UnoGame() {
         currentTurnRef.current = nextTurn
 
         if (gameModeRef.current === 'multiplayer') {
-            await broadcastAction('COLOR_CHOSEN', { color, nextTurn })
+            await broadcastAction('COLOR_CHOSEN', { 
+                color, 
+                nextTurn,
+                newPlayPile: newPile
+            })
         }
     }, [getNextTurn, broadcastAction])
     // #endregion
@@ -1591,6 +1598,14 @@ export default function UnoGame() {
 
     const getDirectionDisplay = () =>
         direction === 'clockwise' ? 'CLOCKWISE →' : 'COUNTER-CLOCKWISE ←'
+    
+    const getWildcardColorClass = (color: string) => {
+        if (color === 'rgb(255, 6, 0)') return 'red'
+        if (color === 'rgb(0, 170, 69)') return 'green'
+        if (color === 'rgb(0, 150, 224)') return 'blue'
+        if (color === 'rgb(255, 222, 0)') return 'yellow'
+        return ''
+    }
     // #endregion
 
     // =====================================================================
@@ -1976,13 +1991,32 @@ export default function UnoGame() {
                 <div className="table-cards">
                     <div className="play-pile">
                         {topCard && (
-                            <Image
-                                src={topCard.src}
-                                alt="play pile"
-                                width={120}
-                                height={180}
-                                style={{ borderRadius: '10px', boxShadow: '0 0.8rem 1.6rem rgba(0,0,0,0.35)' }}
-                            />
+                            <div style={{ position: 'relative', display: 'inline-block' }}>
+                                <Image
+                                    src={topCard.src}
+                                    alt="play pile"
+                                    width={120}
+                                    height={180}
+                                    style={{ borderRadius: '10px', boxShadow: '0 0.8rem 1.6rem rgba(0,0,0,0.35)' }}
+                                />
+                                {/* Wildcard color indicator - show for both Wild Card (13) and Wild Draw 4 (14) */}
+                                {(topCard.value === 13 || topCard.value === 14) && topCard.color !== 'any' && (
+                                    <div 
+                                        className={`wildcard-color-indicator ${getWildcardColorClass(topCard.color)}`}
+                                        style={{
+                                            position: 'absolute',
+                                            bottom: '8px',
+                                            right: '8px',
+                                            width: '24px',
+                                            height: '24px',
+                                            borderRadius: '50%',
+                                            border: '2px solid white',
+                                            boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+                                            backgroundColor: topCard.color,
+                                        }}
+                                    />
+                                )}
+                            </div>
                         )}
                     </div>
 
