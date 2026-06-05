@@ -342,7 +342,7 @@ export default function UnoGame() {
         
         switch(action) {
             case 'PLAY_CARD': {
-                const { card, newHand, newPlayPile, newDirection, nextTurn, colorChosen, drawAmount, drawnCards, drawTargetPlayer, updatedPlayers: receivedUpdatedPlayers } = payload
+                const { card, newHand, newPlayPile, newDirection, nextTurn, colorChosen, drawAmount, drawTargetPlayer, updatedPlayers: receivedUpdatedPlayers } = payload
 
                 let updatedPlayPile = [...playPileRef.current]
                 
@@ -392,24 +392,38 @@ export default function UnoGame() {
                     )
                 }
                 
-                // Handle draw cards from other players
-                if (drawAmount && drawAmount > 0 && drawTargetPlayer && drawnCards && drawnCards.length > 0) {
+                // Handle draw cards - draw penalty cards for the target player (ONCE)
+                if (drawAmount && drawAmount > 0 && drawTargetPlayer) {
                     const drawPlayerIndex = updatedPlayers.findIndex(p => p.id === drawTargetPlayer)
                     
                     if (drawPlayerIndex !== -1) {
-                        const newDrawCards = drawnCards.map((cardData: any) => 
-                            new Card(
-                                cardData.color,
-                                cardData.value,
-                                cardData.points,
-                                cardData.value === 0 || (cardData.value >= 1 && cardData.value <= 9),
-                                cardData.drawValue,
-                                cardData.src
-                            )
-                        )
-                        updatedPlayers[drawPlayerIndex].hand.push(...newDrawCards)
-                        console.log(`Added ${drawAmount} draw cards to player ${drawTargetPlayer}`)
-                        audioManager.play('drawCard')
+                        const drawPlayer = updatedPlayers[drawPlayerIndex]
+                        let updDeck = [...deckRef.current]
+                        let updPile = [...updatedPlayPile]
+                        
+                        // Draw the exact number of penalty cards (2 or 4)
+                        for (let i = 0; i < drawAmount; i++) {
+                            if (updDeck.length > 0) {
+                                const drawnCard = updDeck.shift()!
+                                drawPlayer.hand.push(drawnCard)
+                                audioManager.play('drawCard')
+                            } else if (updPile.length > 1) {
+                                const toShuffle = updPile.slice(0, -1)
+                                updDeck = shuffleDeck(toShuffle)
+                                updPile = [updPile[updPile.length - 1]]
+                                const drawnCard = updDeck.shift()!
+                                drawPlayer.hand.push(drawnCard)
+                                audioManager.play('drawCard')
+                            }
+                        }
+                        
+                        updatedPlayers[drawPlayerIndex] = drawPlayer
+                        setDeckState(updDeck)
+                        deckRef.current = updDeck
+                        setPlayPile(updPile)
+                        playPileRef.current = updPile
+                        
+                        console.log(`Added ${drawAmount} penalty cards to player ${drawTargetPlayer}`)
                     }
                 }
                 
@@ -1340,7 +1354,7 @@ export default function UnoGame() {
     }, [])
     // #endregion
 
-    // #region CPU LOGIC - FIXED FOR DRAW AND SKIP CARDS
+    // #region CPU LOGIC
     const playCPU = useCallback(async (cpuId: Player['id']) => {
         if (currentTurnRef.current !== cpuId) return
         if (!gameOnRef.current) return
@@ -1416,23 +1430,18 @@ export default function UnoGame() {
             directionRef.current = newDir
             nextTurn = getNextTurn(cpuId, newDir, order)
         } else if (chosenCard.value === 11) {
-            // Skip card - skip the next player
             const skippedPlayer = getNextTurn(cpuId, newDir, order)
             nextTurn = getNextTurn(skippedPlayer, newDir, order)
             console.log(`CPU Skip card played! Skipping ${skippedPlayer}, next turn: ${nextTurn}`)
         } else if (chosenCard.drawValue > 0) {
-            // Draw card (+2 or +4) - target player draws cards and gets the turn
             audioManager.play('plusCard')
             const drawTargetPlayer = getNextTurn(cpuId, newDir, order)
-            
-            // Update the draw target player's hand
-            let updDeck = [...currentDeck]
-            let updPile = [...newPlayPile]
-            let updatedPlayers = [...playersRef.current]
-            const drawPlayerIndex = updatedPlayers.findIndex(p => p.id === drawTargetPlayer)
+            const drawPlayerIndex = playersRef.current.findIndex(p => p.id === drawTargetPlayer)
 
             if (drawPlayerIndex !== -1) {
-                const drawPlayer = updatedPlayers[drawPlayerIndex]
+                const drawPlayer = playersRef.current[drawPlayerIndex]
+                let updDeck = [...currentDeck]
+                let updPile = [...newPlayPile]
 
                 for (let i = 0; i < chosenCard.drawValue; i++) {
                     if (updDeck.length > 0) {
@@ -1449,7 +1458,9 @@ export default function UnoGame() {
                     }
                 }
                 
-                updatedPlayers[drawPlayerIndex] = drawPlayer
+                const updatedPlayers = playersRef.current.map((p, idx) => 
+                    idx === drawPlayerIndex ? { ...p, hand: drawPlayer.hand } : p
+                )
                 setPlayers(updatedPlayers)
                 playersRef.current = updatedPlayers
                 setDeckState(updDeck)
@@ -1458,14 +1469,12 @@ export default function UnoGame() {
                 playPileRef.current = updPile
             }
             
-            // The player who drew the penalty cards gets the turn
             nextTurn = drawTargetPlayer
             console.log(`CPU Draw card played! ${chosenCard.drawValue} cards drawn by ${drawTargetPlayer}, their turn begins`)
         } else {
             nextTurn = getNextTurn(cpuId, newDir, order)
         }
 
-        // Handle wild card color selection
         if (chosenCard.color === 'any' && chosenCard.value === 13) {
             const colours = ['rgb(255, 6, 0)', 'rgb(0, 170, 69)', 'rgb(0, 150, 224)', 'rgb(255, 222, 0)']
             const picked = colours[Math.floor(Math.random() * colours.length)]
@@ -1562,7 +1571,7 @@ export default function UnoGame() {
     }, [getNextTurn, broadcastAction])
     // #endregion
 
-    // #region PLAYER CARD CLICK - FIXED FOR DRAW AND SKIP CARDS
+    // #region PLAYER CARD CLICK - FIXED FOR DRAW CARDS (NO DOUBLE PENALTY)
     const handlePlayerCardClick = useCallback(async (index: number) => {
         if (currentTurnRef.current !== myPlayerIdRef.current) return
         if (colorPickerRef.current) return
@@ -1600,47 +1609,16 @@ export default function UnoGame() {
         let nextTurn: Player['id'] | null = null
         let drawnTargetPlayer: Player['id'] | null = null
 
-        // Handle draw cards (+2 or +4) - target player draws cards and gets the turn
+        // For draw cards, we DON'T draw cards locally - we let the broadcast action handle it
+        // This prevents double penalty
         if (playedCard.drawValue > 0) {
             audioManager.play('plusCard')
             const drawTargetPlayer_temp = getNextTurn(myPlayerIdRef.current, newDir, order)
             drawnTargetPlayer = drawTargetPlayer_temp
-            const drawPlayerIndex = updatedPlayers.findIndex(p => p.id === drawTargetPlayer_temp)
-
-            if (drawPlayerIndex !== -1) {
-                const drawPlayer = updatedPlayers[drawPlayerIndex]
-                let updDeck = [...deckRef.current]
-                let updPile = [...newPlayPile]
-
-                // Draw the penalty cards
-                for (let i = 0; i < playedCard.drawValue; i++) {
-                    if (updDeck.length > 0) {
-                        const drawnCard = updDeck.shift()!
-                        drawPlayer.hand.push(drawnCard)
-                        audioManager.play('drawCard')
-                    } else if (updPile.length > 1) {
-                        const toShuffle = updPile.slice(0, -1)
-                        updDeck = shuffleDeck(toShuffle)
-                        updPile = [updPile[updPile.length - 1]]
-                        const drawnCard = updDeck.shift()!
-                        drawPlayer.hand.push(drawnCard)
-                        audioManager.play('drawCard')
-                    }
-                }
-                
-                // Update the players array with the drawn cards
-                updatedPlayers[drawPlayerIndex] = drawPlayer
-                
-                // Update deck and play pile state
-                setDeckState(updDeck)
-                deckRef.current = updDeck
-                setPlayPile(updPile)
-                playPileRef.current = updPile
-            }
             
             // The player who drew the penalty cards gets the turn
             nextTurn = drawnTargetPlayer
-            console.log(`Draw card played! ${playedCard.drawValue} cards drawn by ${drawnTargetPlayer}, their turn begins`)
+            console.log(`Draw card played! ${playedCard.drawValue} cards will be drawn by ${drawnTargetPlayer}, their turn begins`)
         } 
         // Handle skip card (value 11) - THIS is the only card that skips a player
         else if (playedCard.value === 11) {
@@ -1696,7 +1674,6 @@ export default function UnoGame() {
                     nextTurn: null, // Don't change turn for wild card yet
                     drawAmount: playedCard.drawValue,
                     drawTargetPlayer: drawnTargetPlayer,
-                    drawnCards: drawnTargetPlayer ? updatedPlayers.find(p => p.id === drawnTargetPlayer)?.hand.slice(-playedCard.drawValue) : null,
                     updatedPlayers: minimalUpdatedPlayers,
                 })
             }
@@ -1744,7 +1721,6 @@ export default function UnoGame() {
                 nextTurn: nextTurn,
                 drawAmount: playedCard.drawValue,
                 drawTargetPlayer: drawnTargetPlayer,
-                drawnCards: drawnTargetPlayer ? updatedPlayers.find(p => p.id === drawnTargetPlayer)?.hand.slice(-playedCard.drawValue) : null,
                 updatedPlayers: minimalUpdatedPlayers,
             })
         }
