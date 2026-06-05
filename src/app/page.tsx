@@ -801,7 +801,7 @@ export default function UnoGame() {
     }, [tallyPoints, broadcastAction])
     // #endregion
 
-    // #region BIND CHANNEL EVENTS - UPDATED
+    // #region BIND CHANNEL EVENTS
     const bindChannelEvents = useCallback((channel: PusherChannel) => {
         channel.bind('game-action', (raw: unknown) => {
             const gameAction = raw as GameAction
@@ -911,7 +911,7 @@ export default function UnoGame() {
     }, [myPlayerName, bindChannelEvents])
     // #endregion
 
-    // #region JOIN ROOM - UPDATED
+    // #region JOIN ROOM
     const joinRoom = useCallback(async () => {
         if (!myPlayerName.trim())  { setMpError('Please enter your name');   return }
         if (!inputRoomCode.trim()) { setMpError('Please enter a room code'); return }
@@ -963,7 +963,7 @@ export default function UnoGame() {
     }, [myPlayerName, inputRoomCode, bindChannelEvents])
     // #endregion
 
-    // #region HOST ASSIGNS SLOT - UPDATED
+    // #region HOST ASSIGNS SLOT
     useEffect(() => {
         if (!isHost || !mpChannel || gameMode !== 'multiplayer') return
         
@@ -1337,7 +1337,7 @@ export default function UnoGame() {
     }, [])
     // #endregion
 
-    // #region CPU LOGIC
+    // #region CPU LOGIC - FIXED FOR SKIP CARD
     const playCPU = useCallback(async (cpuId: Player['id']) => {
         if (currentTurnRef.current !== cpuId) return
         if (!gameOnRef.current) return
@@ -1405,10 +1405,20 @@ export default function UnoGame() {
         const newCpuHand = [...leftover]
 
         let newDir = currentDir
+        let nextTurn: Player['id']
+
         if (chosenCard.value === 10) {
             newDir = currentDir === 'clockwise' ? 'counter-clockwise' : 'clockwise'
             setDirection(newDir)
             directionRef.current = newDir
+            nextTurn = getNextTurn(cpuId, newDir, order)
+        } else if (chosenCard.value === 11) {
+            // Skip card - skip the next player
+            const skippedPlayer = getNextTurn(cpuId, newDir, order)
+            nextTurn = getNextTurn(skippedPlayer, newDir, order)
+            console.log(`CPU Skip card played! Skipping ${skippedPlayer}, next turn: ${nextTurn}`)
+        } else {
+            nextTurn = getNextTurn(cpuId, newDir, order)
         }
 
         if (chosenCard.color === 'any' && chosenCard.value === 13) {
@@ -1426,7 +1436,6 @@ export default function UnoGame() {
         if (newCpuHand.length === 1) triggerUno(cpuId)
         if (newCpuHand.length === 0) { await checkForWinner(); return }
 
-        let nextTurn = getNextTurn(cpuId, newDir, order)
         setCurrentTurn(nextTurn)
         currentTurnRef.current = nextTurn
     }, [triggerUno, checkForWinner, getCpuDelay, getNextTurn])
@@ -1508,7 +1517,7 @@ export default function UnoGame() {
     }, [getNextTurn, broadcastAction])
     // #endregion
 
-    // #region PLAYER CARD CLICK
+    // #region PLAYER CARD CLICK - FIXED FOR SKIP CARD
     const handlePlayerCardClick = useCallback(async (index: number) => {
         if (currentTurnRef.current !== myPlayerIdRef.current) return
         if (colorPickerRef.current) return
@@ -1545,6 +1554,7 @@ export default function UnoGame() {
 
         let nextTurn: Player['id'] | null = null
 
+        // Handle draw cards (Draw 2 or Wild Draw 4)
         if (playedCard.drawValue > 0) {
             audioManager.play('plusCard')
             const drawTargetPlayer = getNextTurn(myPlayerIdRef.current, newDir, order)
@@ -1577,12 +1587,21 @@ export default function UnoGame() {
             }
             nextTurn = drawTargetPlayer
         }
+        // Handle skip card (value 11)
+        else if (playedCard.value === 11) {
+            // Skip the next player
+            const skippedPlayer = getNextTurn(myPlayerIdRef.current, newDir, order)
+            // Get the player after the skipped player
+            nextTurn = getNextTurn(skippedPlayer, newDir, order)
+            console.log(`Skip card played! Skipping ${skippedPlayer}, next turn: ${nextTurn}`)
+        }
 
         setPlayers(updatedPlayers)
         playersRef.current = updatedPlayers
         setPlayPile(newPlayPile)
         playPileRef.current = newPlayPile
 
+        // Check for UNO
         if (newPlayerHand.length === 1) {
             triggerUno(myPlayerIdRef.current)
             if (gameModeRef.current === 'multiplayer') {
@@ -1590,11 +1609,13 @@ export default function UnoGame() {
             }
         }
 
+        // Check for winner
         if (newPlayerHand.length === 0) {
             await checkForWinner(updatedPlayers)
             return
         }
 
+        // Handle Wild Card (value 13)
         if (playedCard.color === 'any' && playedCard.value === 13) {
             if (gameModeRef.current === 'multiplayer') {
                 await broadcastAction('PLAY_CARD', {
@@ -1626,6 +1647,7 @@ export default function UnoGame() {
             return
         }
 
+        // If next turn not set yet (normal card), get the next player
         if (!nextTurn) {
             nextTurn = getNextTurn(myPlayerIdRef.current, newDir, order)
         }
@@ -1641,7 +1663,7 @@ export default function UnoGame() {
                 newDirection: newDir !== currentDir ? newDir : null,
                 nextTurn: nextTurn,
                 drawAmount: playedCard.drawValue,
-                drawTargetPlayer: nextTurn,
+                drawTargetPlayer: playedCard.drawValue > 0 ? nextTurn : null,
                 updatedPlayers: updatedPlayers.map(p => ({
                     id: p.id,
                     name: p.name.replace(' (You)', ''),
