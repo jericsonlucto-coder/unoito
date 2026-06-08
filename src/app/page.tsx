@@ -915,6 +915,14 @@ const createRoom = useCallback(async () => {
     }, [isHost, mpChannel, gameMode, mpState])
     // #endregion
 
+// Add this useEffect to update the data-card-count attribute on player-hand
+useEffect(() => {
+    const playerHandContainer = document.querySelector('.player-hand');
+    if (playerHandContainer && myPlayer) {
+        playerHandContainer.setAttribute('data-card-count', myPlayer.hand.length.toString());
+    }
+}, [myPlayer?.hand.length]);
+    
     // #region PAGE LEAVE
     useEffect(() => {
         const onUnload = () => {
