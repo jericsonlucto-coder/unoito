@@ -791,33 +791,35 @@ export default function UnoGame() {
     }, [applyGameAction, initializeGameFromStart])
     // #endregion
 
-    // #region CREATE ROOM
-    const createRoom = useCallback(async () => {
-        if (!myPlayerName.trim()) { setMpError('Please enter your name'); return }
-        if (joiningRef.current) return
-        joiningRef.current = true
-        try {
-            const code = generateRoomCode()
-            setRoomCode(code); roomCodeRef.current = code
-            setIsHost(true)
-            const hostId: Player['id'] = 'player'
-            setMyPlayerId(hostId); myPlayerIdRef.current = hostId
-            myPlayerNameRef.current = myPlayerName            const pusher = await getPusherInstance() as { subscribe: (ch: string) => PusherChannel }
-            const channel = pusher.subscribe(`uno-room-${code}`)
-            setMpChannel(channel)
-            const initialConnected = [{ id: hostId, name: myPlayerName }]
-            setMpConnectedPlayers(initialConnected)
-            mpConnectedRef.current = initialConnected
-            bindChannelEvents(channel)
-            setMpState('waiting'); setMpError('')
-        } catch (error) {
-            console.error('Error creating room:', error)
-            setMpError('Failed to create room. Please try again.')
-        } finally {
-            setTimeout(() => { joiningRef.current = false }, 1000)
-        }
-    }, [myPlayerName, bindChannelEvents])
-    // #endregion
+// #region CREATE ROOM - FIXED
+const createRoom = useCallback(async () => {
+    if (!myPlayerName.trim()) { setMpError('Please enter your name'); return }
+    if (joiningRef.current) return
+    joiningRef.current = true
+    try {
+        const code = generateRoomCode()
+        setRoomCode(code); roomCodeRef.current = code
+        setIsHost(true)
+        const hostId: Player['id'] = 'player'
+        setMyPlayerId(hostId); myPlayerIdRef.current = hostId
+        myPlayerNameRef.current = myPlayerName;
+        
+        const pusher = await getPusherInstance() as { subscribe: (ch: string) => PusherChannel }
+        const channel = pusher.subscribe(`uno-room-${code}`)
+        setMpChannel(channel)
+        const initialConnected = [{ id: hostId, name: myPlayerName }]
+        setMpConnectedPlayers(initialConnected)
+        mpConnectedRef.current = initialConnected
+        bindChannelEvents(channel)
+        setMpState('waiting'); setMpError('')
+    } catch (error) {
+        console.error('Error creating room:', error)
+        setMpError('Failed to create room. Please try again.')
+    } finally {
+        setTimeout(() => { joiningRef.current = false }, 1000)
+    }
+}, [myPlayerName, bindChannelEvents])
+// #endregion
 
     // #region JOIN ROOM
     const joinRoom = useCallback(async () => {
