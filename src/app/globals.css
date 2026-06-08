@@ -1,4 +1,3 @@
-css
 /* globals.css - Complete CSS for 2-4 Player Uno Game */
 
 *,
@@ -328,6 +327,7 @@ body {
     max-width: 95vw;
 }
 
+/* Responsive Hand Container - AUTO SIZE CARDS */
 .player-hand {
     display: flex;
     justify-content: center;
@@ -340,6 +340,7 @@ body {
     max-width: 90vw;
 }
 
+/* Base card size - scales automatically based on container and count */
 .player-card {
     cursor: pointer;
     transition: all 0.2s ease;
@@ -347,11 +348,106 @@ body {
     height: auto;
     border-radius: 0.8rem;
     box-shadow: 0 0.4rem 0.8rem rgba(0, 0, 0, 0.3);
+    flex-shrink: 0;
 }
 
 .player-card:hover {
     transform: translateY(-1rem) scale(1.05);
     box-shadow: 0 1rem 2rem rgba(0, 0, 0, 0.4);
+}
+
+/* AUTO-RESPONSIVE HAND CARDS - Scale down when too many cards */
+@media (min-width: 1200px) {
+    .player-hand {
+        gap: 0.6rem;
+    }
+    
+    /* Dynamic card sizing based on hand size - set via JS or CSS container queries */
+    .player-hand[data-card-count="1"] .player-card,
+    .player-hand[data-card-count="2"] .player-card,
+    .player-hand[data-card-count="3"] .player-card,
+    .player-hand[data-card-count="4"] .player-card,
+    .player-hand[data-card-count="5"] .player-card,
+    .player-hand[data-card-count="6"] .player-card,
+    .player-hand[data-card-count="7"] .player-card {
+        width: 80px;
+    }
+    
+    .player-hand[data-card-count="8"] .player-card,
+    .player-hand[data-card-count="9"] .player-card,
+    .player-hand[data-card-count="10"] .player-card {
+        width: 70px;
+    }
+    
+    .player-hand[data-card-count="11"] .player-card,
+    .player-hand[data-card-count="12"] .player-card,
+    .player-hand[data-card-count="13"] .player-card,
+    .player-hand[data-card-count="14"] .player-card {
+        width: 60px;
+    }
+    
+    .player-hand[data-card-count="15"] .player-card,
+    .player-hand[data-card-count="16"] .player-card,
+    .player-hand[data-card-count="17"] .player-card,
+    .player-hand[data-card-count="18"] .player-card,
+    .player-hand[data-card-count="19"] .player-card,
+    .player-hand[data-card-count="20"] .player-card {
+        width: 55px;
+    }
+    
+    .player-hand[data-card-count="21"] .player-card,
+    .player-hand[data-card-count="22"] .player-card,
+    .player-hand[data-card-count="23"] .player-card,
+    .player-hand[data-card-count="24"] .player-card,
+    .player-hand[data-card-count="25"] .player-card {
+        width: 50px;
+    }
+    
+    .player-hand[data-card-count="26"] .player-card,
+    .player-hand[data-card-count="27"] .player-card,
+    .player-hand[data-card-count="28"] .player-card,
+    .player-hand[data-card-count="29"] .player-card,
+    .player-hand[data-card-count="30"] .player-card {
+        width: 45px;
+    }
+    
+    .player-hand[data-card-count="31"] .player-card,
+    .player-hand[data-card-count="32"] .player-card,
+    .player-hand[data-card-count="33"] .player-card,
+    .player-hand[data-card-count="34"] .player-card,
+    .player-hand[data-card-count="35"] .player-card {
+        width: 40px;
+    }
+}
+
+/* Container query fallback for modern browsers */
+@container (min-width: 0px) {
+    .player-hand {
+        container-type: inline-size;
+    }
+}
+
+/* CSS Grid approach for better auto-sizing */
+.player-hand {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+/* Alternative: Use grid with auto-fit for perfect spacing */
+.player-hand.grid-layout {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(60px, auto));
+    justify-content: center;
+    gap: 0.6rem;
+}
+
+.player-hand.grid-layout .player-card {
+    width: 100%;
+    max-width: 80px;
+    min-width: 40px;
 }
 
 /* Player UNO Animation */
@@ -616,6 +712,55 @@ body {
     .player-card {
         width: 70px;
     }
+    
+    /* Adjust hand card sizing for tablet */
+    .player-hand[data-card-count="1"] .player-card,
+    .player-hand[data-card-count="2"] .player-card,
+    .player-hand[data-card-count="3"] .player-card,
+    .player-hand[data-card-count="4"] .player-card,
+    .player-hand[data-card-count="5"] .player-card,
+    .player-hand[data-card-count="6"] .player-card,
+    .player-hand[data-card-count="7"] .player-card {
+        width: 70px;
+    }
+    
+    .player-hand[data-card-count="8"] .player-card,
+    .player-hand[data-card-count="9"] .player-card,
+    .player-hand[data-card-count="10"] .player-card {
+        width: 60px;
+    }
+    
+    .player-hand[data-card-count="11"] .player-card,
+    .player-hand[data-card-count="12"] .player-card,
+    .player-hand[data-card-count="13"] .player-card,
+    .player-hand[data-card-count="14"] .player-card {
+        width: 55px;
+    }
+    
+    .player-hand[data-card-count="15"] .player-card,
+    .player-hand[data-card-count="16"] .player-card,
+    .player-hand[data-card-count="17"] .player-card,
+    .player-hand[data-card-count="18"] .player-card,
+    .player-hand[data-card-count="19"] .player-card,
+    .player-hand[data-card-count="20"] .player-card {
+        width: 50px;
+    }
+    
+    .player-hand[data-card-count="21"] .player-card,
+    .player-hand[data-card-count="22"] .player-card,
+    .player-hand[data-card-count="23"] .player-card,
+    .player-hand[data-card-count="24"] .player-card,
+    .player-hand[data-card-count="25"] .player-card {
+        width: 45px;
+    }
+    
+    .player-hand[data-card-count="26"] .player-card,
+    .player-hand[data-card-count="27"] .player-card,
+    .player-hand[data-card-count="28"] .player-card,
+    .player-hand[data-card-count="29"] .player-card,
+    .player-hand[data-card-count="30"] .player-card {
+        width: 40px;
+    }
 }
 
 /* Responsive Design - Mobile/Tablet (when screen is too small for side players) */
@@ -680,6 +825,7 @@ body {
     
     .player-hand {
         max-width: 95vw;
+        gap: 0.4rem;
     }
     
     .table-cards {
@@ -702,6 +848,11 @@ body {
         flex-direction: column;
         order: -1;
     }
+    
+    /* Mobile hand card sizing */
+    .player-card {
+        width: 55px;
+    }
 }
 
 /* Responsive Design - Mobile Small */
@@ -719,7 +870,7 @@ body {
     }
     
     .player-card {
-        width: 60px;
+        width: 50px;
     }
     
     .play-pile img, 
@@ -762,6 +913,16 @@ body {
     .end-of-round p, .end-of-game p {
         font-size: 1.4rem;
     }
+    
+    /* Small mobile hand cards */
+    .player-hand {
+        gap: 0.3rem;
+        padding: 0.6rem;
+    }
+    
+    .player-card {
+        width: 45px;
+    }
 }
 
 /* Responsive Design - Mobile Extra Small */
@@ -775,7 +936,7 @@ body {
     }
     
     .player-card {
-        width: 50px;
+        width: 40px;
     }
     
     .play-pile img, 
@@ -820,6 +981,15 @@ body {
     .cpu-name, .player-name {
         font-size: 1rem;
     }
+    
+    /* Extra small hand cards */
+    .player-card {
+        width: 38px;
+    }
+    
+    .player-hand {
+        gap: 0.2rem;
+    }
 }
 
 /* Landscape mode adjustments */
@@ -858,6 +1028,7 @@ body {
     .player-hand {
         max-height: 80px;
         overflow-y: auto;
+        gap: 0.3rem;
     }
     
     .center-area {
@@ -881,7 +1052,7 @@ body {
     }
     
     .player-card {
-        width: 55px;
+        width: 45px;
     }
     
     .play-pile img, 
