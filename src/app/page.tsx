@@ -293,7 +293,6 @@ export default function UnoGame() {
     // #region BROADCAST ACTION
     const broadcastAction = useCallback(async (action: string, payload: any) => {
         if (gameModeRef.current !== 'multiplayer') return
-        // Allow DRAW_CARD_UPDATE even when gameOn might be transitioning
         if (!gameOnRef.current && action !== 'ROUND_WINNER' && action !== 'GAME_WINNER' && action !== 'DRAW_CARD_UPDATE') return
         const channel = `uno-room-${roomCodeRef.current}`
         try {
@@ -310,38 +309,38 @@ export default function UnoGame() {
     }, [])
     // #endregion
 
-    // #region APPLY GAME ACTION
-    // KEY FIX: DRAW_CARD_UPDATE must NOT be skipped even if playerId === myPlayerId
-    // because the sender already updated themselves - receivers need to update opponent hand backs
+    // #region APPLY GAME ACTION - FIXED VERSION
     const applyGameAction = useCallback((gameAction: GameAction) => {
         const { action, payload, playerId } = gameAction
 
-        // CRITICAL FIX: For DRAW_CARD_UPDATE, we always process it
-        // because it updates OTHER players' hand back counts
-        // Only skip if the action is from ourselves AND it's not a hand-count update
         if (action !== 'DRAW_CARD_UPDATE' && playerId === myPlayerIdRef.current) return
 
         console.log('Applying action:', action, payload)
 
         switch (action) {
             case 'DRAW_CARD_UPDATE': {
-                // This action is broadcast by the player who drew
-                // All OTHER players need to update that player's hand back count
-                const {
-                    playerId: drawPlayerId,
-                    handCount,
-                    newDeck,
-                    newPlayPile,
-                } = payload
+                // FIXED: Only receive handCount, simulate draw locally
+                const { playerId: drawPlayerId, handCount } = payload
 
-                // Skip if this update is about ourselves (we already updated locally)
                 if (drawPlayerId === myPlayerIdRef.current) return
 
                 console.log(`DRAW_CARD_UPDATE received: Player ${drawPlayerId} now has ${handCount} cards`)
 
+                // Simulate the draw locally to update deck state consistently
+                let newDeckForSimulation = [...deckRef.current]
+                let newPlayPileForSimulation = [...playPileRef.current]
+
+                if (newDeckForSimulation.length > 0) {
+                    newDeckForSimulation.shift()
+                } else if (newPlayPileForSimulation.length > 1) {
+                    const toShuffle = newPlayPileForSimulation.slice(0, -1)
+                    newDeckForSimulation = shuffleDeck(toShuffle)
+                    newPlayPileForSimulation = [newPlayPileForSimulation[newPlayPileForSimulation.length - 1]]
+                    newDeckForSimulation.shift()
+                }
+
                 const updatedPlayers = playersRef.current.map(p => {
                     if (p.id !== drawPlayerId) return p
-                    // Replace with correct number of card backs
                     const newHand: CardType[] = Array.from({ length: handCount }, () => ({
                         color: 'any',
                         value: -1,
@@ -355,18 +354,12 @@ export default function UnoGame() {
                     return { ...p, hand: newHand }
                 })
 
-                // CRITICAL: spread into new array to force React re-render
                 setPlayers([...updatedPlayers])
                 playersRef.current = [...updatedPlayers]
-
-                if (newDeck) {
-                    setDeckState([...newDeck])
-                    deckRef.current = newDeck
-                }
-                if (newPlayPile) {
-                    setPlayPile([...newPlayPile])
-                    playPileRef.current = newPlayPile
-                }
+                setDeckState([...newDeckForSimulation])
+                deckRef.current = newDeckForSimulation
+                setPlayPile([...newPlayPileForSimulation])
+                playPileRef.current = newPlayPileForSimulation
                 audioManager.play('drawCard')
                 break
             }
@@ -375,111 +368,54 @@ export default function UnoGame() {
                 if (playerId === myPlayerIdRef.current) return
                 const {
                     card,
-                    newHand,
-                    newPlayPile,
+                    playerHandCount,
+                    cardIndex,
                     newDirection,
                     nextTurn,
                     colorChosen,
                     drawAmount,
                     drawTargetPlayer,
-                    updatedPlayers: receivedUpdatedPlayers,
                 } = payload
+
+                // Update play pile
                 let updatedPlayPile = [...playPileRef.current]
-                if (newPlayPile && newPlayPile.length > 0) {
-                    updatedPlayPile = newPlayPile
-                } else if (card) {
+                if (card) {
                     updatedPlayPile.push(card)
                 }
                 setPlayPile([...updatedPlayPile])
                 playPileRef.current = updatedPlayPile
-                let updatedPlayers: Player[] = []
-                if (receivedUpdatedPlayers && Array.isArray(receivedUpdatedPlayers)) {
-                    updatedPlayers = playersRef.current.map((existingPlayer) => {
-                        const receivedPlayer = receivedUpdatedPlayers.find(
-                            (p: any) => p.id === existingPlayer.id
-                        )
-                        if (!receivedPlayer) return existingPlayer
-                        const displayName =
-                            receivedPlayer.id === myPlayerIdRef.current
-                                ? `${receivedPlayer.name} (You)`
-                                : receivedPlayer.name
-                        if (receivedPlayer.id !== myPlayerIdRef.current) {
-                            const targetCount: number =
-                                typeof receivedPlayer.handCount === 'number'
-                                    ? receivedPlayer.handCount
-                                    : existingPlayer.hand.length
-                            const dummyHand: CardType[] = Array.from(
-                                { length: targetCount },
-                                () => ({
-                                    color: 'any',
-                                    value: -1,
-                                    points: 0,
-                                    changeTurn: false,
-                                    drawValue: 0,
-                                    src: '/images/back.png',
-                                    playedByPlayer: false,
-                                } as CardType)
-                            )
-                            return {
-                                ...existingPlayer,
-                                name: displayName,
-                                score: receivedPlayer.score ?? existingPlayer.score,
-                                hand: dummyHand,
-                            }
-                        }
-                        let handToUse = existingPlayer.hand
-                        if (
-                            receivedPlayer.hand !== null &&
-                            Array.isArray(receivedPlayer.hand) &&
-                            receivedPlayer.hand.length > 0
-                        ) {
-                            handToUse = receivedPlayer.hand.map(
-                                (cardData: any) =>
-                                    new Card(
-                                        cardData.color,
-                                        cardData.value,
-                                        cardData.points,
-                                        cardData.value === 0 ||
-                                            (cardData.value >= 1 && cardData.value <= 9),
-                                        cardData.drawValue,
-                                        cardData.src
-                                    )
-                            )
-                        }
-                        return {
-                            ...existingPlayer,
-                            name: displayName,
-                            score: receivedPlayer.score ?? existingPlayer.score,
-                            hand: handToUse,
-                        }
-                    })
-                } else {
-                    updatedPlayers = playersRef.current.map(p =>
-                        p.id === playerId ? { ...p, hand: newHand } : p
-                    )
-                }
+
+                // Update the player's hand size
+                const updatedPlayers = playersRef.current.map(p => {
+                    if (p.id !== playerId) return p
+                    const newHand: CardType[] = Array.from({ length: playerHandCount }, () => ({
+                        color: 'any',
+                        value: -1,
+                        points: 0,
+                        changeTurn: false,
+                        drawValue: 0,
+                        src: '/images/back.png',
+                        playedByPlayer: false,
+                    } as CardType))
+                    return { ...p, hand: newHand }
+                })
+
+                // Handle draw cards if needed
                 if (drawAmount && drawAmount > 0 && drawTargetPlayer) {
-                    const drawPlayerIndex = updatedPlayers.findIndex(
-                        p => p.id === drawTargetPlayer
-                    )
+                    const drawPlayerIndex = updatedPlayers.findIndex(p => p.id === drawTargetPlayer)
                     if (drawPlayerIndex !== -1) {
-                        const drawPlayer = {
-                            ...updatedPlayers[drawPlayerIndex],
-                            hand: [...updatedPlayers[drawPlayerIndex].hand],
-                        }
+                        const drawPlayer = { ...updatedPlayers[drawPlayerIndex], hand: [...updatedPlayers[drawPlayerIndex].hand] }
                         let updDeck = [...deckRef.current]
                         let updPile = [...updatedPlayPile]
                         for (let i = 0; i < drawAmount; i++) {
                             if (updDeck.length > 0) {
-                                const drawnCard = updDeck.shift()!
-                                drawPlayer.hand.push(drawnCard)
+                                drawPlayer.hand.push(updDeck.shift()!)
                                 audioManager.play('drawCard')
                             } else if (updPile.length > 1) {
                                 const toShuffle = updPile.slice(0, -1)
                                 updDeck = shuffleDeck(toShuffle)
                                 updPile = [updPile[updPile.length - 1]]
-                                const drawnCard = updDeck.shift()!
-                                drawPlayer.hand.push(drawnCard)
+                                drawPlayer.hand.push(updDeck.shift()!)
                                 audioManager.play('drawCard')
                             }
                         }
@@ -490,8 +426,10 @@ export default function UnoGame() {
                         playPileRef.current = updPile
                     }
                 }
+
                 setPlayers([...updatedPlayers])
                 playersRef.current = [...updatedPlayers]
+
                 if (newDirection && newDirection !== directionRef.current) {
                     setDirection(newDirection)
                     directionRef.current = newDirection
@@ -507,40 +445,46 @@ export default function UnoGame() {
                     setSelectedWildColor(colorChosen)
                     selectedWildColorRef.current = colorChosen
                 }
-                if (newHand && newHand.length === 1 && card && card.value !== 13) {
+                if (playerHandCount === 1 && card && card.value !== 13) {
                     triggerUno(playerId)
                 }
                 break
             }
+
             case 'DRAW_CARD': {
                 if (playerId === myPlayerIdRef.current) return
-                const { newHand, newDeck, newPlayPile, nextTurn } = payload
+                const { newHandCount, nextTurn } = payload
                 const updatedPlayers = playersRef.current.map(p =>
-                    p.id === playerId ? { ...p, hand: newHand } : p
+                    p.id === playerId ? { 
+                        ...p, 
+                        hand: Array.from({ length: newHandCount }, () => ({
+                            color: 'any',
+                            value: -1,
+                            points: 0,
+                            changeTurn: false,
+                            drawValue: 0,
+                            src: '/images/back.png',
+                            playedByPlayer: false,
+                        } as CardType))
+                    } : p
                 )
                 setPlayers([...updatedPlayers])
                 playersRef.current = [...updatedPlayers]
-                if (newDeck) { setDeckState([...newDeck]); deckRef.current = newDeck }
-                if (newPlayPile) { setPlayPile([...newPlayPile]); playPileRef.current = newPlayPile }
                 if (nextTurn) { setCurrentTurn(nextTurn); currentTurnRef.current = nextTurn }
                 audioManager.play('drawCard')
                 break
             }
+
             case 'COLOR_CHOSEN': {
                 if (playerId === myPlayerIdRef.current) return
-                const { color, newPlayPile, nextTurn } = payload
-                if (newPlayPile) {
-                    setPlayPile([...newPlayPile])
-                    playPileRef.current = newPlayPile
-                } else {
-                    const updatedPile = [...playPileRef.current]
-                    const lastCard = updatedPile[updatedPile.length - 1]
-                    if (lastCard && lastCard.value === 13) {
-                        updatedPile[updatedPile.length - 1] = { ...lastCard, color }
-                    }
-                    setPlayPile([...updatedPile])
-                    playPileRef.current = updatedPile
+                const { color, nextTurn } = payload
+                const updatedPile = [...playPileRef.current]
+                const lastCard = updatedPile[updatedPile.length - 1]
+                if (lastCard && lastCard.value === 13) {
+                    updatedPile[updatedPile.length - 1] = { ...lastCard, color }
                 }
+                setPlayPile([...updatedPile])
+                playPileRef.current = updatedPile
                 setColorPickerOpen(false)
                 colorPickerRef.current = false
                 setWildCardColor(color)
@@ -549,12 +493,14 @@ export default function UnoGame() {
                 if (nextTurn) { setCurrentTurn(nextTurn); currentTurnRef.current = nextTurn }
                 break
             }
+
             case 'UNO_SHOUT': {
                 if (playerId === myPlayerIdRef.current) return
                 const { playerId: unoPlayerId } = payload
                 triggerUno(unoPlayerId || playerId)
                 break
             }
+
             case 'ROUND_WINNER': {
                 if (playerId === myPlayerIdRef.current) return
                 const { winnerId, winnerName, updatedPlayers } = payload
@@ -566,11 +512,8 @@ export default function UnoGame() {
                     const merged = playersRef.current.map(p => {
                         const info = updatedPlayers.find((up: any) => up.id === p.id)
                         if (!info) return p
-                        const displayName =
-                            p.id === myPlayerIdRef.current
-                                ? `${info.name} (You)`
-                                : info.name
-                        return { ...p, score: info.score, name: displayName }
+                        const displayName = p.id === myPlayerIdRef.current ? `${info.name} (You)` : info.name
+                        return { ...p, score: info.score, name: displayName, hand: p.hand }
                     })
                     setPlayers([...merged])
                     playersRef.current = [...merged]
@@ -578,6 +521,7 @@ export default function UnoGame() {
                 setTimeout(() => setRoundVisible(false), 3000)
                 break
             }
+
             case 'GAME_WINNER': {
                 if (playerId === myPlayerIdRef.current) return
                 const { winnerId, winnerName, finalScores } = payload
@@ -590,10 +534,7 @@ export default function UnoGame() {
                     const merged = playersRef.current.map(p => {
                         const info = finalScores.find((fs: any) => fs.id === p.id)
                         if (!info) return p
-                        const displayName =
-                            p.id === myPlayerIdRef.current
-                                ? `${info.name} (You)`
-                                : info.name
+                        const displayName = p.id === myPlayerIdRef.current ? `${info.name} (You)` : info.name
                         return { ...p, score: info.score, name: displayName }
                     })
                     setPlayers([...merged])
@@ -601,6 +542,7 @@ export default function UnoGame() {
                 }
                 break
             }
+
             case 'TURN_CHANGE': {
                 if (playerId === myPlayerIdRef.current) return
                 const { nextTurn, newDirection } = payload
@@ -1180,7 +1122,7 @@ export default function UnoGame() {
     }, [triggerUno, checkForWinner, getCpuDelay, getNextTurn])
     // #endregion
 
-    // #region DRAW PILE CLICK
+    // #region DRAW PILE CLICK - FIXED VERSION (NO 413 ERROR)
     const handleDrawPileClick = useCallback(async () => {
         if (currentTurnRef.current !== myPlayerIdRef.current) return
         if (colorPickerRef.current) return
@@ -1219,15 +1161,13 @@ export default function UnoGame() {
         setPlayPile([...newPlayPile])
         playPileRef.current = newPlayPile
 
-        // Broadcast hand size update IMMEDIATELY before anything else
-        // so all opponents see the new card back count right away
+        // FIXED: Broadcast ONLY handCount (no deck or playpile arrays)
         if (gameModeRef.current === 'multiplayer') {
             console.log(`Broadcasting DRAW_CARD_UPDATE: ${myPlayerIdRef.current} now has ${newHand.length} cards`)
             await broadcastAction('DRAW_CARD_UPDATE', {
                 playerId: myPlayerIdRef.current,
                 handCount: newHand.length,
-                newDeck: [...newDeck],
-                newPlayPile: [...newPlayPile],
+                // IMPORTANT: Do NOT send newDeck or newPlayPile - they cause 413 errors
             })
         }
 
@@ -1255,7 +1195,7 @@ export default function UnoGame() {
     }, [getNextTurn, broadcastAction])
     // #endregion
 
-    // #region PLAYER CARD CLICK
+    // #region PLAYER CARD CLICK - FIXED VERSION (NO 413 ERROR)
     const handlePlayerCardClick = useCallback(async (index: number) => {
         if (currentTurnRef.current !== myPlayerIdRef.current) return
         if (colorPickerRef.current) return
@@ -1305,26 +1245,16 @@ export default function UnoGame() {
         }
         if (playedCard.color === 'any' && playedCard.value === 13) {
             if (gameModeRef.current === 'multiplayer') {
+                // FIXED: Send minimal data - no large arrays
                 await broadcastAction('PLAY_CARD', {
                     card: playedCard,
-                    newHand: newPlayerHand,
-                    newPlayPile,
+                    playerHandCount: newPlayerHand.length,
+                    cardIndex: index,
                     newDirection: newDir !== currentDir ? newDir : null,
                     nextTurn: null,
                     drawAmount: playedCard.drawValue,
                     drawTargetPlayer: drawnTargetPlayer,
-                    updatedPlayers: updatedPlayers.map(p => ({
-                        id: p.id,
-                        name: p.name.replace(' (You)', ''),
-                        score: p.score,
-                        handCount: p.hand.length,
-                        hand: p.id === myPlayerIdRef.current
-                            ? p.hand.map(c => ({
-                                color: c.color, value: c.value, points: c.points,
-                                drawValue: c.drawValue, src: c.src,
-                            }))
-                            : null,
-                    })),
+                    colorChosen: true,
                 })
             }
             setColorPickerOpen(true); colorPickerRef.current = true
@@ -1334,32 +1264,21 @@ export default function UnoGame() {
             nextTurn = getNextTurn(myPlayerIdRef.current, newDir, order)
         if (nextTurn) { setCurrentTurn(nextTurn); currentTurnRef.current = nextTurn }
         if (gameModeRef.current === 'multiplayer') {
+            // FIXED: Send minimal data - no large arrays
             await broadcastAction('PLAY_CARD', {
                 card: playedCard,
-                newHand: newPlayerHand,
-                newPlayPile,
+                playerHandCount: newPlayerHand.length,
+                cardIndex: index,
                 newDirection: newDir !== currentDir ? newDir : null,
                 nextTurn,
                 drawAmount: playedCard.drawValue,
                 drawTargetPlayer: drawnTargetPlayer,
-                updatedPlayers: updatedPlayers.map(p => ({
-                    id: p.id,
-                    name: p.name.replace(' (You)', ''),
-                    score: p.score,
-                    handCount: p.hand.length,
-                    hand: p.id === myPlayerIdRef.current
-                        ? p.hand.map(c => ({
-                            color: c.color, value: c.value, points: c.points,
-                            drawValue: c.drawValue, src: c.src,
-                        }))
-                        : null,
-                })),
             })
         }
     }, [triggerUno, checkForWinner, getNextTurn, broadcastAction])
     // #endregion
 
-    // #region COLOUR CHOSEN
+    // #region COLOUR CHOSEN - FIXED VERSION
     const handleColorChosen = useCallback(async (color: string) => {
         audioManager.play('colorButton')
         const order = playerOrderRef.current
@@ -1374,7 +1293,8 @@ export default function UnoGame() {
         const nextTurn = getNextTurn(myPlayerIdRef.current, directionRef.current, order)
         setCurrentTurn(nextTurn); currentTurnRef.current = nextTurn
         if (gameModeRef.current === 'multiplayer') {
-            await broadcastAction('COLOR_CHOSEN', { color, nextTurn, newPlayPile: newPile })
+            // FIXED: Send minimal data
+            await broadcastAction('COLOR_CHOSEN', { color, nextTurn })
             await broadcastAction('TURN_CHANGE', { nextTurn })
         }
     }, [getNextTurn, broadcastAction])
