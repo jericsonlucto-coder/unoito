@@ -271,7 +271,6 @@ export default function UnoGame() {
     // #region CLEANUP ON UNMOUNT
     useEffect(() => {
         return () => {
-            // Cleanup when component unmounts
             setRoundVisible(false);
             setRoundWinner(null);
             setGameVisible(false);
@@ -313,6 +312,48 @@ export default function UnoGame() {
     const getCpuDelay = useCallback(() =>
         Math.floor(Math.random() * 500 + 1000), [])
     // #endregion
+
+    // #region CARD SIZE HELPERS
+    const getPlayerCardSize = (cardCount: number) => {
+        if (cardCount <= 5) return { width: 100, height: 150 }
+        if (cardCount <= 8) return { width: 85, height: 128 }
+        if (cardCount <= 12) return { width: 75, height: 113 }
+        if (cardCount <= 16) return { width: 65, height: 98 }
+        if (cardCount <= 20) return { width: 55, height: 83 }
+        return { width: 45, height: 68 }
+    }
+
+    const getCpuCardSize = (handSize: number, isVertical: boolean) => {
+        if (isVertical) {
+            if (handSize <= 4) return { width: 90, height: 60 }
+            if (handSize <= 7) return { width: 75, height: 50 }
+            if (handSize <= 10) return { width: 65, height: 43 }
+            return { width: 55, height: 37 }
+        } else {
+            if (handSize <= 5) return { width: 60, height: 90 }
+            if (handSize <= 8) return { width: 50, height: 75 }
+            if (handSize <= 12) return { width: 42, height: 63 }
+            return { width: 35, height: 53 }
+        }
+    }
+
+    const getCardMargin = (cardCount: number) => {
+        if (cardCount <= 5) return '0.5rem'
+        if (cardCount <= 8) return '0.3rem'
+        if (cardCount <= 12) return '0.2rem'
+        return '0.1rem'
+    }
+
+    const getZoomScale = () => {
+        const handSize = myPlayer?.hand.length ?? 0
+        if (handSize <= 7) return 1
+        if (handSize <= 10) return 0.9
+        if (handSize <= 14) return 0.85
+        if (handSize <= 18) return 0.8
+        return 0.75
+    }
+    // #endregion
+
     // #region BROADCAST ACTION
     const broadcastAction = useCallback(async (action: string, payload: any) => {
         if (gameModeRef.current !== 'multiplayer') return
@@ -579,7 +620,6 @@ export default function UnoGame() {
             firstTurn, direction: startDirection, drawAmount, drawPlayerId,
         } = payload
         
-        // Reset notification states
         setRoundVisible(false);
         setRoundWinner(null);
         setGameVisible(false);
@@ -791,35 +831,35 @@ export default function UnoGame() {
     }, [applyGameAction, initializeGameFromStart])
     // #endregion
 
-// #region CREATE ROOM - FIXED
-const createRoom = useCallback(async () => {
-    if (!myPlayerName.trim()) { setMpError('Please enter your name'); return }
-    if (joiningRef.current) return
-    joiningRef.current = true
-    try {
-        const code = generateRoomCode()
-        setRoomCode(code); roomCodeRef.current = code
-        setIsHost(true)
-        const hostId: Player['id'] = 'player'
-        setMyPlayerId(hostId); myPlayerIdRef.current = hostId
-        myPlayerNameRef.current = myPlayerName;
-        
-        const pusher = await getPusherInstance() as { subscribe: (ch: string) => PusherChannel }
-        const channel = pusher.subscribe(`uno-room-${code}`)
-        setMpChannel(channel)
-        const initialConnected = [{ id: hostId, name: myPlayerName }]
-        setMpConnectedPlayers(initialConnected)
-        mpConnectedRef.current = initialConnected
-        bindChannelEvents(channel)
-        setMpState('waiting'); setMpError('')
-    } catch (error) {
-        console.error('Error creating room:', error)
-        setMpError('Failed to create room. Please try again.')
-    } finally {
-        setTimeout(() => { joiningRef.current = false }, 1000)
-    }
-}, [myPlayerName, bindChannelEvents])
-// #endregion
+    // #region CREATE ROOM
+    const createRoom = useCallback(async () => {
+        if (!myPlayerName.trim()) { setMpError('Please enter your name'); return }
+        if (joiningRef.current) return
+        joiningRef.current = true
+        try {
+            const code = generateRoomCode()
+            setRoomCode(code); roomCodeRef.current = code
+            setIsHost(true)
+            const hostId: Player['id'] = 'player'
+            setMyPlayerId(hostId); myPlayerIdRef.current = hostId
+            myPlayerNameRef.current = myPlayerName;
+            
+            const pusher = await getPusherInstance() as { subscribe: (ch: string) => PusherChannel }
+            const channel = pusher.subscribe(`uno-room-${code}`)
+            setMpChannel(channel)
+            const initialConnected = [{ id: hostId, name: myPlayerName }]
+            setMpConnectedPlayers(initialConnected)
+            mpConnectedRef.current = initialConnected
+            bindChannelEvents(channel)
+            setMpState('waiting'); setMpError('')
+        } catch (error) {
+            console.error('Error creating room:', error)
+            setMpError('Failed to create room. Please try again.')
+        } finally {
+            setTimeout(() => { joiningRef.current = false }, 1000)
+        }
+    }, [myPlayerName, bindChannelEvents])
+    // #endregion
 
     // #region JOIN ROOM
     const joinRoom = useCallback(async () => {
@@ -941,7 +981,6 @@ const createRoom = useCallback(async () => {
         if (!isHost) return
         if (mpConnectedPlayers.length < 2) { setMpError('Need at least 2 players'); return }
         
-        // Reset notification states
         setRoundVisible(false);
         setRoundWinner(null);
         setGameVisible(false);
@@ -1057,7 +1096,6 @@ const createRoom = useCallback(async () => {
 
     // #region NEW AI GAME - FIXED VERSION
     const newAIGame = useCallback((existingScores?: { [key: string]: number }) => {
-        // RESET ALL NOTIFICATION STATES FIRST
         setRoundVisible(false);
         setRoundWinner(null);
         setGameVisible(false);
@@ -1067,17 +1105,14 @@ const createRoom = useCallback(async () => {
         setWildCardColor('');
         setSelectedWildColor('');
         
-        // Reset game flags
         setGameOn(true);                      gameOnRef.current      = true
         setDirection('clockwise');            directionRef.current   = 'clockwise'
         setPlayerOrderState(AI_PLAYER_ORDER); playerOrderRef.current = AI_PLAYER_ORDER
         setMyPlayerId('player');              myPlayerIdRef.current  = 'player'
         
-        // Create fresh deck
         let newDeck = shuffleDeck(createDeck())
         audioManager.play('shuffle')
         
-        // Initialize players with existing scores (if any)
         const newPlayers: Player[] = [
             { id: 'player', hand: [], score: existingScores?.player ?? 0, position: 'bottom', name: 'YOU',       isHuman: true  },
             { id: 'cpu1',   hand: [], score: existingScores?.cpu1   ?? 0, position: 'top',    name: 'CPU TOP',   isHuman: false },
@@ -1085,12 +1120,10 @@ const createRoom = useCallback(async () => {
             { id: 'cpu3',   hand: [], score: existingScores?.cpu3   ?? 0, position: 'right',  name: 'CPU RIGHT', isHuman: false },
         ]
         
-        // Deal 7 cards to each player
         for (let i = 0; i < 7; i++)
             for (let j = 0; j < newPlayers.length; j++)
                 newPlayers[j].hand.push(newDeck.shift()!)
         
-        // Find a valid starting card (not wild if possible)
         let startCardIndex = -1, startCard: CardType | null = null
         for (let i = 0; i < newDeck.length; i++) {
             if (newDeck[i].value >= 0 && newDeck[i].value <= 9 && newDeck[i].color !== 'any') {
@@ -1104,9 +1137,7 @@ const createRoom = useCallback(async () => {
         if (startCardIndex !== -1 && startCard) newDeck.splice(startCardIndex, 1)
         else if (newDeck.length > 0) startCard = newDeck.shift()!
         
-        // Apply special card effects for starting card
         if (startCard?.value === 12) {
-            // Draw 2 - apply to next player
             const nextPlayer = newPlayers.find(p => p.id === 'cpu1')
             if (nextPlayer && newDeck.length >= 2) {
                 nextPlayer.hand.push(newDeck.shift()!)
@@ -1114,28 +1145,23 @@ const createRoom = useCallback(async () => {
             }
             audioManager.play('plusCard')
         } else if (startCard?.value === 14) {
-            // Wild Draw 4 - apply to next player
             const nextPlayer = newPlayers.find(p => p.id === 'cpu1')
             if (nextPlayer && newDeck.length >= 4) {
                 for (let i = 0; i < 4; i++) nextPlayer.hand.push(newDeck.shift()!)
             }
-            // Choose random color for wild
             const cols = ['rgb(255, 6, 0)', 'rgb(0, 170, 69)', 'rgb(0, 150, 224)', 'rgb(255, 222, 0)']
             if (startCard) startCard.color = cols[Math.floor(Math.random() * cols.length)]
             audioManager.play('plusCard')
         } else if (startCard?.value === 11) {
-            // Skip - go to next player
             startCard.playedByPlayer = true
         }
         
-        // Update state
         setPlayers([...newPlayers]);        playersRef.current     = [...newPlayers]
         setDeckState([...newDeck]);         deckRef.current        = newDeck
         setPlayPile(startCard ? [startCard] : []); playPileRef.current = startCard ? [startCard] : []
         setCurrentTurn('player');           currentTurnRef.current = 'player'
         setColorPickerOpen(false);          colorPickerRef.current = false
         
-        // Ensure notification states are cleared one more time
         setTimeout(() => {
             setRoundVisible(false);
             setGameVisible(false);
@@ -1238,7 +1264,7 @@ const createRoom = useCallback(async () => {
     }, [triggerUno, checkForWinner, getCpuDelay, getNextTurn])
     // #endregion
 
-    // #region DRAW PILE CLICK - FIXED VERSION (NO 413 ERROR)
+    // #region DRAW PILE CLICK
     const handleDrawPileClick = useCallback(async () => {
         if (currentTurnRef.current !== myPlayerIdRef.current) return
         if (colorPickerRef.current) return
@@ -1254,19 +1280,16 @@ const createRoom = useCallback(async () => {
         if (newDeck.length > 0) {
             drawnCard = newDeck.shift()!
             newHand.push(drawnCard)
-            console.log(`Drew card: ${drawnCard.value} of ${drawnCard.color}, hand: ${player.hand.length} -> ${newHand.length}`)
         } else if (newPlayPile.length > 1) {
             const toShuffle = newPlayPile.slice(0, -1)
             newDeck = shuffleDeck(toShuffle)
             newPlayPile = [newPlayPile[newPlayPile.length - 1]]
             drawnCard = newDeck.shift()!
             newHand.push(drawnCard)
-            console.log(`Reshuffled and drew: ${drawnCard.value}, hand: ${player.hand.length} -> ${newHand.length}`)
         } else {
             return
         }
         audioManager.play('drawCard')
-        // Update local state immediately with new array references to force re-render
         const updatedPlayers = playersRef.current.map(p =>
             p.id === myPlayerIdRef.current ? { ...p, hand: [...newHand] } : p
         )
@@ -1277,16 +1300,13 @@ const createRoom = useCallback(async () => {
         setPlayPile([...newPlayPile])
         playPileRef.current = newPlayPile
 
-        // Broadcast ONLY handCount (no deck or playpile arrays)
         if (gameModeRef.current === 'multiplayer') {
-            console.log(`Broadcasting DRAW_CARD_UPDATE: ${myPlayerIdRef.current} now has ${newHand.length} cards`)
             await broadcastAction('DRAW_CARD_UPDATE', {
                 playerId: myPlayerIdRef.current,
                 handCount: newHand.length,
             })
         }
 
-        // Check if drawn card can be played - if yes, keep the turn
         if (drawnCard) {
             const topCard = newPlayPile[newPlayPile.length - 1]
             const canPlay =
@@ -1295,12 +1315,10 @@ const createRoom = useCallback(async () => {
                 drawnCard.color === 'any' ||
                 topCard.color === 'any'
             if (canPlay) {
-                console.log('Drawn card can be played! Keeping turn.')
                 return
             }
         }
 
-        // Card cannot be played - advance to next player
         const nextTurn = getNextTurn(myPlayerIdRef.current, currentDir, order)
         setCurrentTurn(nextTurn)
         currentTurnRef.current = nextTurn
@@ -1310,7 +1328,7 @@ const createRoom = useCallback(async () => {
     }, [getNextTurn, broadcastAction])
     // #endregion
 
-    // #region PLAYER CARD CLICK - FIXED VERSION (NO 413 ERROR)
+    // #region PLAYER CARD CLICK
     const handlePlayerCardClick = useCallback(async (index: number) => {
         if (currentTurnRef.current !== myPlayerIdRef.current) return
         if (colorPickerRef.current) return
@@ -1391,7 +1409,7 @@ const createRoom = useCallback(async () => {
     }, [triggerUno, checkForWinner, getNextTurn, broadcastAction])
     // #endregion
 
-    // #region COLOUR CHOSEN - FIXED VERSION
+    // #region COLOUR CHOSEN
     const handleColorChosen = useCallback(async (color: string) => {
         audioManager.play('colorButton')
         const order = playerOrderRef.current
@@ -1412,11 +1430,10 @@ const createRoom = useCallback(async () => {
     }, [getNextTurn, broadcastAction])
     // #endregion
 
-    // #region PLAY AGAIN - FIXED VERSION
+    // #region PLAY AGAIN
     const handlePlayAgain = useCallback(() => {
         audioManager.play('playAgain')
         
-        // Clear all notification states first
         setGameVisible(false);
         setRoundVisible(false);
         setRoundWinner(null);
@@ -1472,9 +1489,10 @@ const createRoom = useCallback(async () => {
     // #region MENU
     if (gameMode === 'menu') {
         return (
-            <main className="game-container" style={{
+            <main style={{
                 display: 'flex', flexDirection: 'column',
                 alignItems: 'center', justifyContent: 'center', minHeight: '100vh',
+                background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
             }}>
                 <div style={{
                     background: 'rgba(0,0,0,0.75)', borderRadius: '2rem',
@@ -1486,7 +1504,8 @@ const createRoom = useCallback(async () => {
                         textShadow: '0 0 20px rgba(255,215,0,0.5)', marginBottom: '0.5rem',
                     }}>🃏 UNO</h1>
                     <p style={{ color: '#ccc', marginBottom: '2.5rem', fontSize: '1.2rem' }}>
-                        Choose your game mode                    </p>
+                        Choose your game mode
+                    </p>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
                         <button onClick={() => { setGameMode('ai'); gameModeRef.current = 'ai'; newAIGame() }}
                             style={{
@@ -1494,14 +1513,22 @@ const createRoom = useCallback(async () => {
                                 background: 'linear-gradient(135deg,#4caf50,#2e7d32)',
                                 color: 'white', border: 'none', borderRadius: '1rem',
                                 cursor: 'pointer', boxShadow: '0 4px 15px rgba(76,175,80,0.4)',
-                            }}>🤖 Play vs AI</button>
+                                transition: 'transform 0.2s',
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.05)'}
+                            onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                            >🤖 Play vs AI</button>
                         <button onClick={() => { setGameMode('multiplayer'); gameModeRef.current = 'multiplayer' }}
                             style={{
                                 padding: '1.2rem 3rem', fontSize: '1.4rem', fontWeight: 'bold',
                                 background: 'linear-gradient(135deg,#2196f3,#0d47a1)',
                                 color: 'white', border: 'none', borderRadius: '1rem',
                                 cursor: 'pointer', boxShadow: '0 4px 15px rgba(33,150,243,0.4)',
-                            }}>🌐 Multiplayer</button>
+                                transition: 'transform 0.2s',
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.05)'}
+                            onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                            >🌐 Multiplayer</button>
                     </div>
                 </div>
             </main>
@@ -1512,9 +1539,10 @@ const createRoom = useCallback(async () => {
     // #region MULTIPLAYER LOBBY
     if (gameMode === 'multiplayer' && mpState !== 'playing') {
         return (
-            <main className="game-container" style={{
+            <main style={{
                 display: 'flex', flexDirection: 'column',
                 alignItems: 'center', justifyContent: 'center', minHeight: '100vh',
+                background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
             }}>
                 <div style={{
                     background: 'rgba(0,0,0,0.82)', borderRadius: '2rem',
@@ -1530,7 +1558,6 @@ const createRoom = useCallback(async () => {
                                 }).catch(console.error)
                             setGameMode('menu'); setMpState('lobby')
                             setMpError(''); setMpConnectedPlayers([]); setRoomCode('')
-                            // Reset notification states
                             setRoundVisible(false);
                             setRoundWinner(null);
                             setGameVisible(false);
@@ -1678,8 +1705,19 @@ const createRoom = useCallback(async () => {
     // #endregion
 
     // #region GAME BOARD
+    const playerHandSize = myPlayer?.hand.length ?? 0
+    const zoomScale = getZoomScale()
+    
     return (
-        <main className="game-container">
+        <main style={{
+            position: 'relative',
+            minHeight: '100vh',
+            background: 'linear-gradient(135deg, #1a472a 0%, #0d2818 100%)',
+            padding: '2rem',
+            transform: `scale(${zoomScale})`,
+            transformOrigin: 'center top',
+            transition: 'transform 0.3s ease',
+        }}>
             <button
                 onClick={() => {
                     if (roomCode && myPlayerIdRef.current)
@@ -1688,7 +1726,6 @@ const createRoom = useCallback(async () => {
                             playerName: myPlayerNameRef.current,
                         }).catch(console.error)
                     
-                    // Reset all game state before leaving
                     if (gameMode === 'ai') {
                         setRoundVisible(false);
                         setRoundWinner(null);
@@ -1713,7 +1750,11 @@ const createRoom = useCallback(async () => {
                     background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(255,255,255,0.2)',
                     color: '#ccc', padding: '0.4rem 0.8rem',
                     borderRadius: '0.5rem', cursor: 'pointer', fontSize: '0.85rem',
-                }}>← Menu</button>
+                    transition: 'all 0.2s',
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,0,0,0.8)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'rgba(0,0,0,0.6)'}
+                >← Menu</button>
             <div style={{
                 position: 'fixed', top: '1rem', right: '1rem', zIndex: 200,
                 background: gameMode === 'ai' ? 'rgba(76,175,80,0.25)' : 'rgba(33,150,243,0.25)',
@@ -1724,33 +1765,70 @@ const createRoom = useCallback(async () => {
                 {gameMode === 'ai' ? '🤖 vs AI' : `🌐 ${roomCode}`}
             </div>
 
+            {/* CPU Players */}
             {otherPlayers.map(op => {
                 const isMyTurn = currentTurn === op.id
                 const isVertical = op.position === 'left' || op.position === 'right'
+                const handSize = op.hand.length
+                const cardSize = getCpuCardSize(handSize, isVertical)
+                
+                const positionStyles = {
+                    position: 'absolute' as const,
+                    ...(op.position === 'top' && { top: '1rem', left: '50%', transform: 'translateX(-50%)' }),
+                    ...(op.position === 'left' && { left: '1rem', top: '50%', transform: 'translateY(-50%)' }),
+                    ...(op.position === 'right' && { right: '1rem', top: '50%', transform: 'translateY(-50%)' }),
+                }
+                
                 return (
-                    <div key={op.id} className={`cpu-player ${getPositionClass(op.position)}`}>
-                        <div className="cpu-info" style={{
+                    <div key={op.id} style={{
+                        ...positionStyles,
+                        display: 'flex',
+                        flexDirection: isVertical ? 'row' : 'column',
+                        alignItems: 'center',
+                        gap: '1rem',
+                        background: 'rgba(0,0,0,0.5)',
+                        borderRadius: '1rem',
+                        padding: '0.8rem',
+                        zIndex: 10,
+                    }}>
+                        <div style={{
                             border: isMyTurn ? '3px solid #ffd700' : '2px solid transparent',
                             borderRadius: '0.5rem', padding: '0.2rem 0.5rem',
                             background: isMyTurn ? 'rgba(255,215,0,0.2)' : 'rgba(0,0,0,0.5)',
+                            textAlign: 'center',
                         }}>
-                            <div className="cpu-name">{op.name}{isMyTurn && ' 🎯'}</div>
-                            <div style={{ fontSize: '0.75rem', color: '#aaa' }}>
+                            <div style={{ color: 'white', fontWeight: 'bold', fontSize: '0.9rem' }}>{op.name}{isMyTurn && ' 🎯'}</div>
+                            <div style={{ fontSize: '0.7rem', color: '#aaa' }}>
                                 {op.hand.length} cards · {op.score} pts
                             </div>
                         </div>
-                        <div className={isVertical ? 'cpu-hand-vertical' : 'cpu-hand'}>
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            gap: isVertical ? '0.3rem' : '0.5rem',
+                            flexDirection: isVertical ? 'column' : 'row',
+                            transition: 'all 0.3s ease',
+                        }}>
                             {op.hand.map((_, i) => (
                                 <Image key={i} src="/images/back.png" alt="card back"
-                                    width={isVertical ? 90 : 60} height={isVertical ? 60 : 90}
-                                    className={isVertical ? 'cpu-card-vertical' : 'cpu-card'} />
+                                    width={cardSize.width} 
+                                    height={cardSize.height}
+                                    style={{
+                                        transition: 'all 0.2s ease',
+                                        borderRadius: '6px',
+                                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                                    }} />
                             ))}
                         </div>
                         {showUno[op.id] && (
-                            <div className={
-                                op.position === 'top'  ? 'cpu-animation-top'  :
-                                op.position === 'left' ? 'cpu-animation-left' : 'cpu-animation-right'
-                            }>
+                            <div style={{
+                                position: 'absolute',
+                                ...(op.position === 'top' && { top: '-2rem', left: '50%', transform: 'translateX(-50%)' }),
+                                ...(op.position === 'left' && { left: '-3rem', top: '50%', transform: 'translateY(-50%)' }),
+                                ...(op.position === 'right' && { right: '-3rem', top: '50%', transform: 'translateY(-50%)' }),
+                                animation: 'bounce 0.5s ease',
+                            }}>
                                 <Image src="/images/uno!.png" alt="UNO!" width={80} height={40} />
                             </div>
                         )}
@@ -1758,68 +1836,85 @@ const createRoom = useCallback(async () => {
                 )
             })}
 
-            <div className="center-area">
-                <div className="turn-indicator">
-                    <p className="turn-text">
+            {/* Center Area */}
+            <div style={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '1.5rem',
+                zIndex: 5,
+            }}>
+                <div style={{ textAlign: 'center', background: 'rgba(0,0,0,0.6)', padding: '0.5rem 1.5rem', borderRadius: '2rem' }}>
+                    <p style={{ fontSize: '1.2rem', fontWeight: 'bold', margin: 0 }}>
                         {currentTurn === myPlayerId
-                            ? <span className="turn-player">🎮 YOUR TURN 🎮</span>
-                            : <span className="turn-cpu">
+                            ? <span style={{ color: '#ffd700' }}>🎮 YOUR TURN 🎮</span>
+                            : <span style={{ color: '#ff9800' }}>
                                 🎯 {players.find(p => p.id === currentTurn)?.name?.replace(' (You)', '')}&apos;s TURN
                               </span>}
                     </p>
-                    <p style={{ fontSize: '1.1rem', marginTop: '0.4rem', color: '#ffd700' }}>
+                    <p style={{ fontSize: '0.9rem', marginTop: '0.2rem', color: '#ffd700' }}>
                         📍 {getDirectionDisplay()}
                     </p>
                 </div>
-                <div className="last-played">
-                    <p>📋 Last Played</p>
-                    <p className="last-played-card">
-                        {topCard && (
-                            <>
-                                {topCard.playedByPlayer ? '👤 ' : '🤖 '}
-                                {getCardName(topCard)}
-                                {topCard.drawValue > 0 && ` (+${topCard.drawValue})`}
-                            </>
-                        )}
-                    </p>
-                </div>
-                <div className="table-cards">
-                    <div className="play-pile">
+                
+                <div style={{ display: 'flex', gap: '2rem', alignItems: 'center' }}>
+                    {/* Play Pile */}
+                    <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.8rem', color: '#ccc', marginBottom: '0.5rem' }}>📋 Last Played</div>
                         {topCard && (
                             <div style={{ position: 'relative', display: 'inline-block' }}>
                                 <Image src={topCard.src} alt="play pile" width={120} height={180}
                                     style={{ borderRadius: '10px', boxShadow: '0 0.8rem 1.6rem rgba(0,0,0,0.35)' }} />
                                 {(topCard.value === 13 || topCard.value === 14) && topCard.color !== 'any' && (
-                                    <div className={`wildcard-color-indicator ${getWildcardColorClass(topCard.color)}`}
-                                        style={{
-                                            position: 'absolute', bottom: '8px', right: '8px',
-                                            width: '24px', height: '24px', borderRadius: '50%',
-                                            border: '2px solid white',
-                                            boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
-                                            backgroundColor: topCard.color,
-                                        }} />
+                                    <div style={{
+                                        position: 'absolute', bottom: '8px', right: '8px',
+                                        width: '24px', height: '24px', borderRadius: '50%',
+                                        border: '2px solid white',
+                                        boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+                                        backgroundColor: topCard.color,
+                                    }} />
                                 )}
+                                <div style={{ fontSize: '0.7rem', color: '#aaa', marginTop: '0.3rem' }}>
+                                    {topCard.playedByPlayer ? '👤' : '🤖'} {getCardName(topCard)}
+                                </div>
                             </div>
                         )}
                     </div>
-                    <div className="draw-pile" onClick={handleDrawPileClick}
-                        style={{
+                    
+                    {/* Draw Pile */}
+                    <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.8rem', color: '#ccc', marginBottom: '0.5rem' }}>🃏 Draw Pile</div>
+                        <div onClick={handleDrawPileClick} style={{
                             cursor: currentTurn === myPlayerId && !colorPickerOpen && gameOn ? 'pointer' : 'not-allowed',
                             opacity: currentTurn === myPlayerId && !colorPickerOpen && gameOn ? 1 : 0.55,
-                        }}>
-                        <Image src="/images/back.png" alt="draw pile" width={120} height={180} />
-                        <div className="draw-text">Draw Card</div>
+                            transition: 'transform 0.2s',
+                        }}
+                        onMouseEnter={e => {
+                            if (currentTurn === myPlayerId && !colorPickerOpen && gameOn)
+                                e.currentTarget.style.transform = 'scale(1.05)'
+                        }}
+                        onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                        >
+                            <Image src="/images/back.png" alt="draw pile" width={120} height={180} />
+                            <div style={{ marginTop: '0.5rem', fontSize: '0.7rem', color: '#ccc' }}>Draw Card</div>
+                        </div>
                     </div>
                 </div>
+                
+                {/* Score Board */}
                 <div style={{
-                    display: 'flex', gap: '1.2rem', flexWrap: 'wrap',
-                    justifyContent: 'center', marginTop: '0.8rem',
-                    background: 'rgba(0,0,0,0.45)', borderRadius: '0.8rem', padding: '0.6rem 1.2rem',
+                    display: 'flex', gap: '1rem', flexWrap: 'wrap',
+                    justifyContent: 'center', background: 'rgba(0,0,0,0.45)',
+                    borderRadius: '0.8rem', padding: '0.5rem 1rem',
                 }}>
                     {players.map(p => (
                         <span key={p.id} style={{
                             color: p.id === myPlayerId ? '#ffd700' : '#ccc',
-                            fontWeight: p.id === myPlayerId ? 'bold' : 'normal', fontSize: '0.88rem',
+                            fontWeight: p.id === myPlayerId ? 'bold' : 'normal', fontSize: '0.8rem',
                         }}>
                             {p.id === myPlayerId ? '👤' : '👥'} {p.name}: {p.score} ({p.hand.length} cards)
                         </span>
@@ -1827,16 +1922,35 @@ const createRoom = useCallback(async () => {
                 </div>
             </div>
 
-            <div className="player-bottom">
-                <div className="player-info">
-                    <div className="player-name">
+            {/* Player Bottom */}
+            <div style={{
+                position: 'fixed',
+                bottom: '0',
+                left: '0',
+                right: '0',
+                background: 'rgba(0,0,0,0.7)',
+                padding: '1rem',
+                zIndex: 20,
+            }}>
+                <div style={{ textAlign: 'center', marginBottom: '0.5rem' }}>
+                    <div style={{ color: 'white', fontWeight: 'bold' }}>
                         {myPlayer?.name ?? 'YOU'}{currentTurn === myPlayerId && ' 🎯'}
                     </div>
-                    <div style={{ fontSize: '0.8rem', color: '#aaa' }}>
+                    <div style={{ fontSize: '0.7rem', color: '#aaa' }}>
                         {myPlayer?.hand.length ?? 0} cards · {myPlayer?.score ?? 0} pts
                     </div>
                 </div>
-                <div className="player-hand">
+                <div style={{
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    gap: getCardMargin(playerHandSize),
+                    flexWrap: 'wrap',
+                    padding: '0.5rem',
+                    transition: 'all 0.3s ease',
+                    maxWidth: '100%',
+                    overflowX: 'auto',
+                }}>
                     {(myPlayer?.hand ?? []).map((card, i) => {
                         const tc = playPile[playPile.length - 1]
                         const playable = tc && (
@@ -1844,73 +1958,175 @@ const createRoom = useCallback(async () => {
                             card.color === 'any' || tc.color === 'any'
                         )
                         const canAct = currentTurn === myPlayerId && !colorPickerOpen && gameOn
+                        const cardSize = getPlayerCardSize(playerHandSize)
                         return (
                             <Image key={i} src={card.src} alt={`card-${i}`}
-                                width={80} height={120} className="player-card"
+                                width={cardSize.width} 
+                                height={cardSize.height}
                                 onClick={() => handlePlayerCardClick(i)}
                                 style={{
                                     cursor: canAct && playable ? 'pointer' : 'not-allowed',
                                     opacity: canAct ? (playable ? 1 : 0.45) : 0.6,
                                     transform: canAct && playable ? 'translateY(-10px)' : 'none',
                                     outline: canAct && playable ? '2px solid rgba(255,215,0,0.7)' : 'none',
-                                    borderRadius: '6px',
+                                    borderRadius: '8px',
+                                    transition: 'all 0.2s ease',
+                                    boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
+                                }}
+                                onMouseEnter={e => {
+                                    if (canAct && playable)
+                                        e.currentTarget.style.transform = 'translateY(-15px)'
+                                }}
+                                onMouseLeave={e => {
+                                    if (canAct && playable)
+                                        e.currentTarget.style.transform = 'translateY(-10px)'
                                 }} />
                         )
                     })}
                 </div>
                 {showUno[myPlayerId] && (
-                    <div className="player-animation">
+                    <div style={{
+                        position: 'absolute',
+                        bottom: '8rem',
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        animation: 'bounce 0.5s ease',
+                    }}>
                         <Image src="/images/uno!.png" alt="UNO!" width={100} height={50} />
                     </div>
                 )}
             </div>
 
+            {/* Color Picker Modal */}
             {colorPickerOpen && currentTurn === myPlayerId && (
-                <div className="color-picker">
-                    <p>🎨 SELECT A COLOR 🎨</p>
-                    <div>
-                        <button className="red"    onClick={() => handleColorChosen('rgb(255, 6, 0)')}>🔴 RED</button>
-                        <button className="green"  onClick={() => handleColorChosen('rgb(0, 170, 69)')}>🟢 GREEN</button>
-                        <button className="blue"   onClick={() => handleColorChosen('rgb(0, 150, 224)')}>🔵 BLUE</button>
-                        <button className="yellow" onClick={() => handleColorChosen('rgb(255, 222, 0)')}>🟡 YELLOW</button>
+                <div style={{
+                    position: 'fixed',
+                    top: 0, left: 0, right: 0, bottom: 0,
+                    background: 'rgba(0,0,0,0.8)',
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    zIndex: 100,
+                }}>
+                    <div style={{
+                        background: 'white',
+                        borderRadius: '1rem',
+                        padding: '2rem',
+                        textAlign: 'center',
+                    }}>
+                        <p style={{ fontSize: '1.5rem', marginBottom: '1rem' }}>🎨 SELECT A COLOR 🎨</p>
+                        <div style={{ display: 'flex', gap: '1rem' }}>
+                            <button onClick={() => handleColorChosen('rgb(255, 6, 0)')}
+                                style={{ background: '#ff0000', color: 'white', padding: '0.8rem 1.5rem', border: 'none', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: 'bold' }}>🔴 RED</button>
+                            <button onClick={() => handleColorChosen('rgb(0, 170, 69)')}
+                                style={{ background: '#00aa45', color: 'white', padding: '0.8rem 1.5rem', border: 'none', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: 'bold' }}>🟢 GREEN</button>
+                            <button onClick={() => handleColorChosen('rgb(0, 150, 224)')}
+                                style={{ background: '#0096e0', color: 'white', padding: '0.8rem 1.5rem', border: 'none', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: 'bold' }}>🔵 BLUE</button>
+                            <button onClick={() => handleColorChosen('rgb(255, 222, 0)')}
+                                style={{ background: '#ffde00', color: 'black', padding: '0.8rem 1.5rem', border: 'none', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: 'bold' }}>🟡 YELLOW</button>
+                        </div>
                     </div>
                 </div>
             )}
+            
+            {/* Round Winner Modal */}
             {roundVisible && (
-                <div className="end-of-round">
-                    <p>🏆 {roundWinner} won the round!</p>
+                <div style={{
+                    position: 'fixed',
+                    top: '50%', left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    background: 'linear-gradient(135deg, #4caf50, #2e7d32)',
+                    padding: '2rem 3rem',
+                    borderRadius: '1rem',
+                    textAlign: 'center',
+                    zIndex: 100,
+                    animation: 'slideIn 0.3s ease',
+                    boxShadow: '0 10px 40px rgba(0,0,0,0.3)',
+                }}>
+                    <p style={{ fontSize: '2rem', fontWeight: 'bold', color: 'white' }}>🏆 {roundWinner} won the round!</p>
                 </div>
             )}
+            
+            {/* Game Winner Modal */}
             {gameVisible && (
-                <div className="end-of-game">
-                    <p>🎉 {gameWinner} won the game!</p>
-                    {(gameMode === 'ai' || isHost) && (
-                        <button onClick={handlePlayAgain}>Play Again</button>
-                    )}
-                    <button onClick={() => { 
-                        setGameVisible(false); 
-                        if (gameMode === 'ai') {
-                            setRoundVisible(false);
-                            setRoundWinner(null);
-                            setGameWinner(null);
-                            setShowUno({});
-                            setColorPickerOpen(false);
-                            setGameMode('menu');
-                            gameModeRef.current = 'menu';
-                        } else if (gameMode === 'multiplayer') {
-                            resetMultiplayerState();
-                            setGameMode('menu');
-                            gameModeRef.current = 'menu';
-                        } else {
-                            setGameMode('menu');
-                            gameModeRef.current = 'menu';
-                        }
-                        setMpState('lobby');
-                    }}>
-                        Main Menu
-                    </button>
+                <div style={{
+                    position: 'fixed',
+                    top: '50%', left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    background: 'linear-gradient(135deg, #ffd700, #ff9800)',
+                    padding: '2rem 3rem',
+                    borderRadius: '1rem',
+                    textAlign: 'center',
+                    zIndex: 100,
+                    animation: 'slideIn 0.3s ease',
+                    boxShadow: '0 10px 40px rgba(0,0,0,0.3)',
+                }}>
+                    <p style={{ fontSize: '2rem', fontWeight: 'bold', color: '#1a1a2e' }}>🎉 {gameWinner} won the game!</p>
+                    <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem', justifyContent: 'center' }}>
+                        {(gameMode === 'ai' || isHost) && (
+                            <button onClick={handlePlayAgain}
+                                style={{
+                                    padding: '0.8rem 1.5rem',
+                                    background: '#4caf50',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '0.5rem',
+                                    cursor: 'pointer',
+                                    fontWeight: 'bold',
+                                }}>Play Again</button>
+                        )}
+                        <button onClick={() => { 
+                            setGameVisible(false); 
+                            if (gameMode === 'ai') {
+                                setRoundVisible(false);
+                                setRoundWinner(null);
+                                setGameWinner(null);
+                                setShowUno({});
+                                setColorPickerOpen(false);
+                                setGameMode('menu');
+                                gameModeRef.current = 'menu';
+                            } else if (gameMode === 'multiplayer') {
+                                resetMultiplayerState();
+                                setGameMode('menu');
+                                gameModeRef.current = 'menu';
+                            } else {
+                                setGameMode('menu');
+                                gameModeRef.current = 'menu';
+                            }
+                            setMpState('lobby');
+                        }}
+                        style={{
+                            padding: '0.8rem 1.5rem',
+                            background: '#2196f3',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '0.5rem',
+                            cursor: 'pointer',
+                            fontWeight: 'bold',
+                        }}>
+                            Main Menu
+                        </button>
+                    </div>
                 </div>
             )}
+
+            {/* Keyframe animations */}
+            <style jsx global>{`
+                @keyframes bounce {
+                    0%, 100% { transform: translateX(-50%) scale(1); }
+                    50% { transform: translateX(-50%) scale(1.2); }
+                }
+                @keyframes slideIn {
+                    from {
+                        opacity: 0;
+                        transform: translate(-50%, -60%);
+                    }
+                    to {
+                        opacity: 1;
+                        transform: translate(-50%, -50%);
+                    }
+                }
+            `}</style>
         </main>
     )
     // #endregion
