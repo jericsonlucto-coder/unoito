@@ -801,8 +801,7 @@ const createRoom = useCallback(async () => {
         setRoomCode(code); roomCodeRef.current = code
         setIsHost(true)
         const hostId: Player['id'] = 'player'
-        setMyPlayerId(hostId); myPlayerIdRef.current = hostId
-        myPlayerNameRef.current = myPlayerName;
+        setMyPlayerId(hostId); myPlayerIdRef.current = hostId        myPlayerNameRef.current = myPlayerName;
         
         const pusher = await getPusherInstance() as { subscribe: (ch: string) => PusherChannel }
         const channel = pusher.subscribe(`uno-room-${code}`)
@@ -915,14 +914,6 @@ const createRoom = useCallback(async () => {
     }, [isHost, mpChannel, gameMode, mpState])
     // #endregion
 
-// Add this useEffect to update the data-card-count attribute on player-hand
-useEffect(() => {
-    const playerHandContainer = document.querySelector('.player-hand');
-    if (playerHandContainer && myPlayer) {
-        playerHandContainer.setAttribute('data-card-count', myPlayer.hand.length.toString());
-    }
-}, [myPlayer?.hand.length]);
-    
     // #region PAGE LEAVE
     useEffect(() => {
         const onUnload = () => {
@@ -1475,6 +1466,15 @@ useEffect(() => {
         if (color === 'rgb(255, 222, 0)') return 'yellow'
         return ''
     }
+    // #endregion
+
+    // #region HAND CARD RESPONSIVE - UPDATE DATA ATTRIBUTE
+    useEffect(() => {
+        const playerHandContainer = document.querySelector('.player-hand');
+        if (playerHandContainer && myPlayer) {
+            playerHandContainer.setAttribute('data-card-count', myPlayer.hand.length.toString());
+        }
+    }, [myPlayer?.hand.length]);
     // #endregion
 
     // #region MENU
