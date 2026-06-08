@@ -791,7 +791,7 @@ export default function UnoGame() {
     }, [applyGameAction, initializeGameFromStart])
     // #endregion
 
-  // #region CREATE ROOM - FIXED
+// #region CREATE ROOM - FIXED
 const createRoom = useCallback(async () => {
     if (!myPlayerName.trim()) { setMpError('Please enter your name'); return }
     if (joiningRef.current) return
@@ -801,7 +801,7 @@ const createRoom = useCallback(async () => {
         setRoomCode(code); roomCodeRef.current = code
         setIsHost(true)
         const hostId: Player['id'] = 'player'
-        setMyPlayerId(hostId); myPlayerIdRef.current = hostId        myPlayerNameRef.current = myPlayerName;
+        setMyPlayerId(hostId); myPlayerIdRef.current = hostId; myPlayerNameRef.current = myPlayerName;
         
         const pusher = await getPusherInstance() as { subscribe: (ch: string) => PusherChannel }
         const channel = pusher.subscribe(`uno-room-${code}`)
