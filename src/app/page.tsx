@@ -1078,13 +1078,6 @@ export default function UnoGame() {
     }, [currentTurn, gameOn, colorPickerOpen, playCPU, gameMode, players])
     // #endregion
 
-    // #region HAND CARD DATA ATTRIBUTE
-    useEffect(() => {
-        const el = document.querySelector('.player-hand')
-        if (el && myPlayer) el.setAttribute('data-card-count', myPlayer.hand.length.toString())
-    }, [myPlayer?.hand.length])
-    // #endregion
-
     // #region DERIVED
     const topCard      = playPile[playPile.length - 1]
     const myPlayer     = players.find(p => p.id === myPlayerId)
@@ -1107,6 +1100,13 @@ export default function UnoGame() {
         if (color === 'rgb(255, 222, 0)') return 'yellow'
         return ''
     }
+    // #endregion
+
+    // #region HAND CARD DATA ATTRIBUTE
+    useEffect(() => {
+        const el = document.querySelector('.player-hand')
+        if (el && myPlayer) el.setAttribute('data-card-count', myPlayer.hand.length.toString())
+    }, [myPlayer?.hand.length])
     // #endregion
 
     // ─── MENU ──────────────────────────────────────────────────────────────────
