@@ -831,78 +831,171 @@ const joinRoom = useCallback(async () => {
     // #endregion
     // #region CPU LOGIC
     const playCPU = useCallback(async (cpuId: Player['id']) => {
+        // --- Check if it's the CPU's turn and game is active ---
         if (currentTurnRef.current !== cpuId || !gameOnRef.current || colorPickerRef.current || gameModeRef.current !== 'ai') return
+
+        // Small delay before CPU acts (makes it feel more natural)
         await new Promise(resolve => setTimeout(resolve, getCpuDelay()))
+
+        // Double-check conditions after delay
         if (currentTurnRef.current !== cpuId || !gameOnRef.current) return
+
         const order = playerOrderRef.current
         const cpu = playersRef.current.find(p => p.id === cpuId)
         if (!cpu) return
+
+        // Get current game state
         const currentPlayPile = [...playPileRef.current]
         const currentDeck = [...deckRef.current]
         const topCard = currentPlayPile[currentPlayPile.length - 1]
         const currentDir = directionRef.current
-        const playable: CardType[] = [], remaining: CardType[] = []
+
+        // Separate playable cards from non-playable ones
+        const playable: CardType[] = []
+        const remaining: CardType[] = []
+
         for (const card of cpu.hand) {
-            const canPlay = card.color === topCard.color || card.value === topCard.value || card.color === 'any' || topCard.color === 'any'
-            canPlay ? playable.push(card) : remaining.push(card)
+            const canPlay = card.color === topCard.color ||
+                            card.value === topCard.value ||
+                            card.color === 'any' ||
+                            topCard.color === 'any'
+            if (canPlay) {
+                playable.push(card)
+            } else {
+                remaining.push(card)
+            }
         }
+
+        // --- If no playable cards, draw from the deck ---
         if (playable.length === 0) {
-            let newDeck = [...currentDeck], newPlayPile = [...currentPlayPile]
+            let newDeck = [...currentDeck]
+            let newPlayPile = [...currentPlayPile]
             const newHand = [...cpu.hand]
-            if (newDeck.length > 0) newHand.push(newDeck.shift()!)
-            else if (newPlayPile.length > 1) { newDeck = shuffleDeck(newPlayPile.slice(0, -1)); newPlayPile = [newPlayPile[newPlayPile.length - 1]]; newHand.push(newDeck.shift()!) }
+
+            if (newDeck.length > 0) {
+                newHand.push(newDeck.shift()!)
+            } else if (newPlayPile.length > 1) {
+                newDeck = shuffleDeck(newPlayPile.slice(0, -1))
+                newPlayPile = [newPlayPile[newPlayPile.length - 1]]
+                newHand.push(newDeck.shift()!)
+            } else {
+                // Can't draw any card - skip turn
+                const next = getNextTurn(cpuId, currentDir, order)
+                setCurrentTurn(next)
+                currentTurnRef.current = next
+                return
+            }
+
             audioManager.play('drawCard')
-            const updated = playersRef.current.map(p => p.id === cpuId ? { ...p, hand: newHand } : p)
-            setPlayers([...updated]); playersRef.current = [...updated]
-            setDeckState([...newDeck]); deckRef.current = newDeck
-            setPlayPile([...newPlayPile]); playPileRef.current = newPlayPile
+
+            const updated = playersRef.current.map(p =>
+                p.id === cpuId ? { ...p, hand: newHand } : p
+            )
+            setPlayers([...updated])
+            playersRef.current = [...updated]
+            setDeckState([...newDeck])
+            deckRef.current = newDeck
+            setPlayPile([...newPlayPile])
+            playPileRef.current = newPlayPile
+
             const next = getNextTurn(cpuId, currentDir, order)
-            setCurrentTurn(next); currentTurnRef.current = next
+            setCurrentTurn(next)
+            currentTurnRef.current = next
             return
         }
+
+        // --- Choose the first playable card (simple AI logic) ---
         const chosenCard = playable[0]
         const leftover = [...remaining, ...playable.slice(1)]
+
         audioManager.playCardSound()
+
+        // Prepare new play pile with the chosen card
         const newPlayPile = [...currentPlayPile, { ...chosenCard, playedByPlayer: false }]
         const newCpuHand = [...leftover]
-        let newDir = currentDir, nextTurn: Player['id']
-        if (chosenCard.value === 10) {
+
+        let newDir = currentDir
+        let nextTurn: Player['id']
+        let drawTarget: Player['id'] | null = null
+
+        // --- Handle special card effects ---
+        if (chosenCard.value === 10) { // Reverse
             newDir = currentDir === 'clockwise' ? 'counter-clockwise' : 'clockwise'
-            setDirection(newDir); directionRef.current = newDir
+            setDirection(newDir)
+            directionRef.current = newDir
             nextTurn = getNextTurn(cpuId, newDir, order)
-        } else if (chosenCard.value === 11) {
+        } else if (chosenCard.value === 11) { // Skip
             const skipped = getNextTurn(cpuId, newDir, order)
             nextTurn = getNextTurn(skipped, newDir, order)
-        } else if (chosenCard.drawValue > 0) {
+        } else if (chosenCard.drawValue > 0) { // Draw 2 or Wild Draw 4
             audioManager.play('plusCard')
-            const drawTarget = getNextTurn(cpuId, newDir, order)
-            const drawIdx = playersRef.current.findIndex(p => p.id === drawTarget)
-            if (drawIdx !== -1) {
-                const drawPlayer = { ...playersRef.current[drawIdx], hand: [...playersRef.current[drawIdx].hand] }
-                let updDeck = [...currentDeck], updPile = [...newPlayPile]
+            drawTarget = getNextTurn(cpuId, newDir, order)
+
+            // Apply draw penalty to the next player
+            const drawPlayerIndex = playersRef.current.findIndex(p => p.id === drawTarget)
+            if (drawPlayerIndex !== -1) {
+                const drawPlayer = { ...playersRef.current[drawPlayerIndex] }
+                let updDeck = [...currentDeck]
+                let updPile = [...newPlayPile]
+
                 for (let i = 0; i < chosenCard.drawValue; i++) {
-                    if (updDeck.length > 0) { drawPlayer.hand.push(updDeck.shift()!); audioManager.play('drawCard') }
-                    else if (updPile.length > 1) { updDeck = shuffleDeck(updPile.slice(0, -1)); updPile = [updPile[updPile.length - 1]]; drawPlayer.hand.push(updDeck.shift()!); audioManager.play('drawCard') }
+                    if (updDeck.length > 0) {
+                        drawPlayer.hand.push(updDeck.shift()!)
+                        audioManager.play('drawCard')
+                    } else if (updPile.length > 1) {
+                        updDeck = shuffleDeck(updPile.slice(0, -1))
+                        updPile = [updPile[updPile.length - 1]]
+                        drawPlayer.hand.push(updDeck.shift()!)
+                        audioManager.play('drawCard')
+                    }
                 }
-                const updatedPlayers = playersRef.current.map((p, i) => i === drawIdx ? { ...p, hand: drawPlayer.hand } : p)
-                setPlayers([...updatedPlayers]); playersRef.current = [...updatedPlayers]
-                setDeckState([...updDeck]); deckRef.current = updDeck
-                setPlayPile([...updPile]); playPileRef.current = updPile
+
+                const updatedPlayers = playersRef.current.map((p, i) =>
+                    i === drawPlayerIndex ? drawPlayer : p
+                )
+                setPlayers([...updatedPlayers])
+                playersRef.current = [...updatedPlayers]
+                setDeckState([...updDeck])
+                deckRef.current = updDeck
+                setPlayPile([...updPile])
+                playPileRef.current = updPile
             }
             nextTurn = drawTarget
-        } else {
+        } else { // Normal number card
             nextTurn = getNextTurn(cpuId, newDir, order)
         }
+
+        // --- Handle Wild Card color selection ---
         if (chosenCard.color === 'any' && chosenCard.value === 13) {
             const cols = ['rgb(255, 6, 0)', 'rgb(0, 170, 69)', 'rgb(0, 150, 224)', 'rgb(255, 222, 0)']
-            newPlayPile[newPlayPile.length - 1].color = cols[Math.floor(Math.random() * cols.length)]
+            const chosenColor = cols[Math.floor(Math.random() * cols.length)]
+            newPlayPile[newPlayPile.length - 1].color = chosenColor
         }
-        const updated = playersRef.current.map(p => p.id === cpuId ? { ...p, hand: newCpuHand } : p)
-        setPlayers([...updated]); playersRef.current = [...updated]
-        setPlayPile([...newPlayPile]); playPileRef.current = newPlayPile
-        if (newCpuHand.length === 1) triggerUno(cpuId)
-        if (newCpuHand.length === 0) { await checkForWinner(); return }
-        setCurrentTurn(nextTurn); currentTurnRef.current = nextTurn
+
+        // Update CPU hand
+        const updated = playersRef.current.map(p =>
+            p.id === cpuId ? { ...p, hand: newCpuHand } : p
+        )
+        setPlayers([...updated])
+        playersRef.current = [...updated]
+        setPlayPile([...newPlayPile])
+        playPileRef.current = newPlayPile
+
+        // Shout UNO if CPU has one card left
+        if (newCpuHand.length === 1) {
+            triggerUno(cpuId)
+        }
+
+        // Check if CPU won the round
+        if (newCpuHand.length === 0) {
+            await checkForWinner()
+            return
+        }
+
+        // Move to next turn
+        setCurrentTurn(nextTurn)
+        currentTurnRef.current = nextTurn
+
     }, [triggerUno, checkForWinner, getCpuDelay, getNextTurn])
     // #endregion
     // #region DRAW PILE CLICK
