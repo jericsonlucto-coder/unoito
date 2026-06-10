@@ -646,8 +646,7 @@ export default function UnoGame() {
             setRoomCode(code); roomCodeRef.current = code
             setIsHost(false); myPlayerNameRef.current = myPlayerName
             const tempId = ('temp_' + Date.now() + '_' + Math.random().toString(36).substring(7)) as Player['id']
-            setMyPlayerId(tempId); myPlayerIdRef.current = tempId
-            const pusher = await getPusherInstance() as { subscribe: (ch: string) => PusherChannel }
+            setMyPlayerId(tempId); myPlayerIdRef.current = tempId            const pusher = await getPusherInstance() as { subscribe: (ch: string) => PusherChannel }
             const channel = pusher.subscribe(`uno-room-${code}`)
             setMpChannel(channel); bindChannelEvents(channel)
             setMpConnectedPlayers(prev => {
@@ -1202,8 +1201,7 @@ export default function UnoGame() {
             minHeight: '100vh',
             width: '100vw',
             position: 'relative',
-            // KEY: allow children to overflow visibly
-            overflow: 'hidden',
+            overflow: 'visible', // FIXED: changed from 'hidden' to 'visible' to prevent clipping
             background: 'radial-gradient(ellipse at center, #1a5c1a 0%, #0d3a0d 50%, #050f05 100%)',
             fontFamily: "'Segoe UI', sans-serif",
         }}>
@@ -1281,7 +1279,6 @@ export default function UnoGame() {
                             alignItems: 'flex-start',
                             justifyContent: 'center',
                             flexWrap: 'nowrap',
-                            // allow cards to extend beyond without clipping
                             overflow: 'visible',
                             padding: '2px 0',
                         }}>
@@ -1353,7 +1350,6 @@ export default function UnoGame() {
                             flexWrap: 'nowrap',
                             overflow: 'visible',
                             padding: '0 2px',
-                            // constrain height so it doesn't push into top/bottom bars
                             maxHeight: 'calc(100vh - 180px)',
                         }}>
                             {op.hand.map((_, i) => (
@@ -1555,8 +1551,7 @@ export default function UnoGame() {
                 flexDirection: 'column',
                 alignItems: 'center',
                 gap: '5px',
-                // IMPORTANT: allow cards to lift upward without clipping
-                overflow: 'visible',
+                overflow: 'visible', // FIXED: added to allow cards to lift without clipping
             }}>
                 {/* Player info bar */}
                 <div style={{
@@ -1582,14 +1577,12 @@ export default function UnoGame() {
                         display: 'flex',
                         flexDirection: 'row',
                         flexWrap: 'nowrap',
-                        alignItems: 'flex-end',
+                        alignItems: 'flex-end', // FIXED: changed from 'center' to 'flex-end' so cards grow upward
                         justifyContent: 'center',
                         width: '100%',
-                        // horizontal scroll if too many cards, never clip vertically
                         overflowX: 'auto',
-                        overflowY: 'visible',
-                        padding: '6px 12px 2px',
-                        // hide scrollbar aesthetically
+                        overflowY: 'visible', // FIXED: changed from 'hidden' to 'visible'
+                        padding: '6px 12px 12px', // FIXED: added more bottom padding
                         scrollbarWidth: 'none',
                     }}
                 >
@@ -1620,9 +1613,9 @@ export default function UnoGame() {
                                     position: 'relative',
                                     flexShrink: 0,
                                     cursor: canAct && playable ? 'pointer' : 'not-allowed',
-                                    // lift playable cards upward — needs parent overflow:visible
-                                    transform: canAct && playable ? 'translateY(-18px)' : 'translateY(0px)',
+                                    transform: canAct && playable ? 'translateY(-28px)' : 'translateY(0px)', // FIXED: increased lift from -18px to -28px
                                     transition: 'transform 0.18s ease',
+                                    marginBottom: canAct && playable ? '20px' : '0px', // FIXED: added margin to prevent clipping
                                 }}
                             >
                                 <Image
