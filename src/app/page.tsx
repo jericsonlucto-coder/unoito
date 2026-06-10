@@ -386,7 +386,10 @@ export default function UnoGame() {
                 setPlayers([...updatedPlayers]); playersRef.current = [...updatedPlayers]
                 if (newDirection && newDirection !== directionRef.current) { setDirection(newDirection); directionRef.current = newDirection }
                 if (nextTurn) { setCurrentTurn(nextTurn); currentTurnRef.current = nextTurn }
-                if (colorChosen) { setColorPickerOpen(true); colorPickerRef.current = true; setWildCardColor(colorChosen); setSelectedWildColor(colorChosen); selectedWildColorRef.current = colorChosen }
+                if (colorChosen) {
+                    setColorPickerOpen(true); colorPickerRef.current = true
+                    setWildCardColor(colorChosen); setSelectedWildColor(colorChosen); selectedWildColorRef.current = colorChosen
+                }
                 if (playerHandCount === 1 && card && card.value !== 13) triggerUno(playerId)
                 break
             }
@@ -513,7 +516,10 @@ export default function UnoGame() {
         const currentPlayers = [...initializedPlayers]
         if (drawAmount && drawAmount > 0 && drawPlayerId) {
             const dp = currentPlayers.find(p => p.id === drawPlayerId)
-            if (dp) { for (let i = 0; i < drawAmount; i++) if (currentDeck.length > 0) dp.hand.push(currentDeck.shift()!); audioManager.play('plusCard') }
+            if (dp) {
+                for (let i = 0; i < drawAmount; i++) if (currentDeck.length > 0) dp.hand.push(currentDeck.shift()!)
+                audioManager.play('plusCard')
+            }
         }
         setPlayers([...currentPlayers]); playersRef.current = [...currentPlayers]
         setDeckState([...currentDeck]); deckRef.current = currentDeck
@@ -586,7 +592,9 @@ export default function UnoGame() {
         })
         channel.bind('slot-assigned', (raw: unknown) => {
             const data = raw as SlotPayload
-            if (data.playerId && data.playerName === myPlayerNameRef.current) { setMyPlayerId(data.playerId); myPlayerIdRef.current = data.playerId }
+            if (data.playerId && data.playerName === myPlayerNameRef.current) {
+                setMyPlayerId(data.playerId); myPlayerIdRef.current = data.playerId
+            }
             if (data.allPlayers) {
                 const unique = Array.from(new Map(data.allPlayers.map(p => [p.name, p])).values())
                 setMpConnectedPlayers(unique); mpConnectedRef.current = unique
@@ -760,7 +768,8 @@ export default function UnoGame() {
         setColorPickerOpen(false); colorPickerRef.current = false
         setMpState('playing'); audioManager.play('shuffle')
         await pusherTrigger(`uno-room-${roomCode}`, 'game-started', {
-            playerOrder, startCard: startCard ? { color: startCard.color, value: startCard.value, points: startCard.points, drawValue: startCard.drawValue, src: startCard.src } : null,
+            playerOrder,
+            startCard: startCard ? { color: startCard.color, value: startCard.value, points: startCard.points, drawValue: startCard.drawValue, src: startCard.src } : null,
             players: newPlayers.map(p => ({ id: p.id, name: p.name, score: p.score, hand: p.hand.map(c => ({ color: c.color, value: c.value, points: c.points, changeTurn: c.changeTurn, drawValue: c.drawValue, src: c.src, playedByPlayer: c.playedByPlayer })) })),
             firstTurn: firstPlayer, direction: 'clockwise', drawAmount, drawPlayerId,
         })
@@ -774,7 +783,7 @@ export default function UnoGame() {
         setDirection('clockwise'); directionRef.current = 'clockwise'
         setCurrentTurn('player'); currentTurnRef.current = 'player'
         setMpState('lobby'); setMpConnectedPlayers([]); setMpError(''); setRoomCode(''); roomCodeRef.current = ''
-        if (mpChannel) { try { mpChannel.unbind_all() } catch (e) { console.error('Error unbinding channel:', e) } setMpChannel(null) }
+        if (mpChannel) { try { mpChannel.unbind_all() } catch (e) { console.error('Error unbinding:', e) } setMpChannel(null) }
     }, [mpChannel])
     // #endregion
     // #region NEW AI GAME
@@ -999,8 +1008,7 @@ export default function UnoGame() {
         if (p && !p.isHuman) playCPU(currentTurn)
     }, [currentTurn, gameOn, colorPickerOpen, playCPU, gameMode, players])
     // #endregion
-    // #region HAND CARD RESPONSIVE
-       // #region DERIVED
+    // #region DERIVED
     const topCard      = playPile[playPile.length - 1]
     const myPlayer     = players.find(p => p.id === myPlayerId)
     const otherPlayers = players.filter(p => p.id !== myPlayerId)
@@ -1011,22 +1019,20 @@ export default function UnoGame() {
         if (playerHandContainer && myPlayer) playerHandContainer.setAttribute('data-card-count', myPlayer.hand.length.toString())
     }, [myPlayer?.hand.length])
     // #endregion
+    // #region HELPERS UI
     const getCardName = (card: CardType) => {
         if (card.color === 'any') return card.drawValue === 4 ? 'Wild Draw 4' : 'Wild Card'
         const colorNames: Record<string, string> = { 'rgb(255, 6, 0)': 'Red', 'rgb(0, 170, 69)': 'Green', 'rgb(0, 150, 224)': 'Blue', 'rgb(255, 222, 0)': 'Yellow' }
         const valueNames: Record<number, string> = { 10: 'Reverse', 11: 'Skip', 12: 'Draw 2', 13: 'Wild', 14: 'Wild Draw 4' }
         return `${colorNames[card.color] ?? card.color} ${valueNames[card.value] ?? card.value}`
     }
-    const getPositionClass = (pos: Player['position']) =>
-        pos === 'top' ? 'cpu-top' : pos === 'left' ? 'cpu-left' : pos === 'right' ? 'cpu-right' : ''
-    const getDirectionDisplay = () => direction === 'clockwise' ? 'CLOCKWISE →' : 'COUNTER-CLOCKWISE ←'
-    const getWildcardColorClass = (color: string) => {
-        if (color === 'rgb(255, 6, 0)')   return 'red'
-        if (color === 'rgb(0, 170, 69)')  return 'green'
-        if (color === 'rgb(0, 150, 224)') return 'blue'
-        if (color === 'rgb(255, 222, 0)') return 'yellow'
-        return ''
-    }
+    const getDirectionDisplay = () => direction === 'clockwise' ? '↻ CW' : '↺ CCW'
+    const getWildcardColorStyle = (color: string): React.CSSProperties => ({
+        position: 'absolute', bottom: '6px', right: '6px',
+        width: '20px', height: '20px', borderRadius: '50%',
+        border: '2px solid white', backgroundColor: color,
+        boxShadow: '0 1px 4px rgba(0,0,0,0.4)',
+    })
     // #endregion
 
     // #region MENU
@@ -1037,20 +1043,18 @@ export default function UnoGame() {
                 justifyContent: 'center', minHeight: '100vh',
                 background: 'radial-gradient(ellipse at center, #1a4a1a 0%, #0d2b0d 50%, #050f05 100%)',
                 fontFamily: "'Segoe UI', sans-serif",
+                overflow: 'hidden', position: 'relative',
             }}>
-                {/* Decorative background circles */}
-                <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}>
-                    {['#ff0600','#00aa45','#0096e0','#ffde00'].map((c, i) => (
-                        <div key={i} style={{
-                            position: 'absolute',
-                            width: `${200 + i * 80}px`, height: `${200 + i * 80}px`,
-                            borderRadius: '50%', border: `3px solid ${c}22`,
-                            top: `${[10,60,20,70][i]}%`, left: `${[5,75,45,15][i]}%`,
-                            transform: 'translate(-50%,-50%)',
-                            animation: `spin${i % 2 === 0 ? '' : 'Rev'} ${20 + i * 5}s linear infinite`,
-                        }} />
-                    ))}
-                </div>
+                {/* Decorative rings */}
+                {['#ff0600','#00aa45','#0096e0','#ffde00'].map((c, i) => (
+                    <div key={i} style={{
+                        position: 'absolute',
+                        width: `${180 + i * 90}px`, height: `${180 + i * 90}px`,
+                        borderRadius: '50%', border: `2px solid ${c}22`,
+                        top: `${[15, 65, 25, 75][i]}%`, left: `${[8, 78, 48, 18][i]}%`,
+                        transform: 'translate(-50%,-50%)', pointerEvents: 'none',
+                    }} />
+                ))}
                 <div style={{
                     background: 'rgba(0,0,0,0.85)', borderRadius: '2.5rem',
                     padding: '4rem 5rem', textAlign: 'center',
@@ -1059,12 +1063,11 @@ export default function UnoGame() {
                     boxShadow: '0 0 60px rgba(255,215,0,0.15), 0 20px 60px rgba(0,0,0,0.5)',
                     position: 'relative', zIndex: 1,
                 }}>
-                    <div style={{ fontSize: '5rem', marginBottom: '0.5rem' }}>🃏</div>
+                    <div style={{ fontSize: '5rem', marginBottom: '0.3rem' }}>🃏</div>
                     <h1 style={{
                         fontSize: '5.5rem', fontWeight: '900', color: '#ffd700',
                         textShadow: '0 0 30px rgba(255,215,0,0.7), 0 4px 8px rgba(0,0,0,0.5)',
-                        marginBottom: '0.5rem', letterSpacing: '0.1em',
-                        lineHeight: 1,
+                        margin: '0 0 0.4rem', letterSpacing: '0.1em', lineHeight: 1,
                     }}>UNO</h1>
                     <p style={{ color: '#aaa', marginBottom: '3rem', fontSize: '1.4rem', letterSpacing: '0.05em' }}>
                         Choose your game mode
@@ -1077,11 +1080,10 @@ export default function UnoGame() {
                                 background: 'linear-gradient(135deg,#4caf50,#2e7d32)',
                                 color: 'white', border: 'none', borderRadius: '1.2rem',
                                 cursor: 'pointer', boxShadow: '0 6px 20px rgba(76,175,80,0.5)',
-                                transition: 'transform 0.15s, box-shadow 0.15s',
-                                letterSpacing: '0.05em',
+                                transition: 'transform 0.15s, box-shadow 0.15s', letterSpacing: '0.05em',
                             }}
-                            onMouseEnter={e => { (e.target as HTMLElement).style.transform = 'translateY(-3px)'; (e.target as HTMLElement).style.boxShadow = '0 10px 28px rgba(76,175,80,0.6)' }}
-                            onMouseLeave={e => { (e.target as HTMLElement).style.transform = 'none'; (e.target as HTMLElement).style.boxShadow = '0 6px 20px rgba(76,175,80,0.5)' }}
+                            onMouseEnter={e => { (e.currentTarget).style.transform = 'translateY(-3px)' }}
+                            onMouseLeave={e => { (e.currentTarget).style.transform = 'none' }}
                         >🤖 Play vs AI</button>
                         <button
                             onClick={() => { setGameMode('multiplayer'); gameModeRef.current = 'multiplayer' }}
@@ -1090,11 +1092,10 @@ export default function UnoGame() {
                                 background: 'linear-gradient(135deg,#2196f3,#0d47a1)',
                                 color: 'white', border: 'none', borderRadius: '1.2rem',
                                 cursor: 'pointer', boxShadow: '0 6px 20px rgba(33,150,243,0.5)',
-                                transition: 'transform 0.15s, box-shadow 0.15s',
-                                letterSpacing: '0.05em',
+                                transition: 'transform 0.15s, box-shadow 0.15s', letterSpacing: '0.05em',
                             }}
-                            onMouseEnter={e => { (e.target as HTMLElement).style.transform = 'translateY(-3px)'; (e.target as HTMLElement).style.boxShadow = '0 10px 28px rgba(33,150,243,0.6)' }}
-                            onMouseLeave={e => { (e.target as HTMLElement).style.transform = 'none'; (e.target as HTMLElement).style.boxShadow = '0 6px 20px rgba(33,150,243,0.5)' }}
+                            onMouseEnter={e => { (e.currentTarget).style.transform = 'translateY(-3px)' }}
+                            onMouseLeave={e => { (e.currentTarget).style.transform = 'none' }}
                         >🌐 Multiplayer</button>
                     </div>
                 </div>
@@ -1163,7 +1164,7 @@ export default function UnoGame() {
                         <>
                             <div style={{ background: 'rgba(255,215,0,0.08)', border: '2px dashed rgba(255,215,0,0.5)', borderRadius: '1rem', padding: '1.8rem', textAlign: 'center', marginBottom: '1.8rem' }}>
                                 <p style={{ color: '#ccc', marginBottom: '0.4rem', fontSize: '1.1rem' }}>Room Code</p>
-                                <p style={{ fontSize: '3.5rem', fontWeight: 'bold', color: '#ffd700', letterSpacing: '0.3em', fontFamily: 'monospace' }}>{roomCode}</p>
+                                <p style={{ fontSize: '3.5rem', fontWeight: 'bold', color: '#ffd700', letterSpacing: '0.3em', fontFamily: 'monospace', margin: '0.3rem 0' }}>{roomCode}</p>
                                 <p style={{ color: '#aaa', fontSize: '0.95rem' }}>Share this code with friends</p>
                             </div>
                             <p style={{ color: '#ccc', marginBottom: '0.8rem', fontSize: '1.1rem' }}>Players ({mpConnectedPlayers.length}/4)</p>
@@ -1197,19 +1198,23 @@ export default function UnoGame() {
 
     // #region GAME BOARD
     return (
-        <main className="game-container" style={{
-            minHeight: '100vh', position: 'relative', overflow: 'hidden',
-            background: 'radial-gradient(ellipse at center, #1a4a1a 0%, #0d2b0d 50%, #050f05 100%)',
+        <main style={{
+            minHeight: '100vh',
+            width: '100vw',
+            position: 'relative',
+            // KEY: allow children to overflow visibly
+            overflow: 'hidden',
+            background: 'radial-gradient(ellipse at center, #1a5c1a 0%, #0d3a0d 50%, #050f05 100%)',
             fontFamily: "'Segoe UI', sans-serif",
-            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
         }}>
-            {/* TOP BAR */}
+            {/* ── TOP BAR ── */}
             <div style={{
-                position: 'fixed', top: 0, left: 0, right: 0, zIndex: 200,
+                position: 'fixed', top: 0, left: 0, right: 0, zIndex: 300,
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                padding: '0.8rem 1.5rem',
-                background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(10px)',
-                borderBottom: '1px solid rgba(255,255,255,0.1)',
+                padding: '0.6rem 1.2rem',
+                background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(10px)',
+                borderBottom: '1px solid rgba(255,255,255,0.08)',
+                height: '52px', boxSizing: 'border-box',
             }}>
                 <button onClick={() => {
                     if (roomCode && myPlayerIdRef.current)
@@ -1218,79 +1223,229 @@ export default function UnoGame() {
                     else if (gameMode === 'multiplayer') resetMultiplayerState()
                     setGameMode('menu'); gameModeRef.current = 'menu'; setMpState('lobby'); setMpConnectedPlayers([]); setRoomCode('')
                 }} style={{
-                    background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.25)',
-                    color: 'white', padding: '0.5rem 1.2rem', borderRadius: '0.6rem',
-                    cursor: 'pointer', fontSize: '1rem', fontWeight: 'bold',
+                    background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
+                    color: 'white', padding: '0.4rem 1rem', borderRadius: '0.5rem',
+                    cursor: 'pointer', fontSize: '0.95rem', fontWeight: 'bold',
                 }}>← Menu</button>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                    {/* Direction indicator */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
                     <div style={{
                         background: 'rgba(255,215,0,0.15)', border: '1px solid rgba(255,215,0,0.4)',
-                        color: '#ffd700', padding: '0.4rem 1rem', borderRadius: '2rem',
-                        fontSize: '1rem', fontWeight: 'bold',
-                    }}>
-                        {direction === 'clockwise' ? '↻ CW' : '↺ CCW'}
-                    </div>
+                        color: '#ffd700', padding: '0.3rem 0.9rem', borderRadius: '2rem',
+                        fontSize: '0.95rem', fontWeight: 'bold',
+                    }}>{getDirectionDisplay()}</div>
                     <div style={{
                         background: gameMode === 'ai' ? 'rgba(76,175,80,0.2)' : 'rgba(33,150,243,0.2)',
                         border: `1px solid ${gameMode === 'ai' ? '#4caf50' : '#2196f3'}`,
-                        color: 'white', padding: '0.4rem 1rem', borderRadius: '2rem', fontSize: '1rem',
-                    }}>
-                        {gameMode === 'ai' ? '🤖 vs AI' : `🌐 ${roomCode}`}
-                    </div>
+                        color: 'white', padding: '0.3rem 0.9rem', borderRadius: '2rem', fontSize: '0.95rem',
+                    }}>{gameMode === 'ai' ? '🤖 vs AI' : `🌐 ${roomCode}`}</div>
                 </div>
             </div>
 
-            {/* OTHER PLAYERS */}
-            {otherPlayers.map(op => {
+            {/* ── TOP PLAYER ── */}
+            {otherPlayers.filter(op => op.position === 'top').map(op => {
                 const isMyTurn = currentTurn === op.id
-                const isVertical = op.position === 'left' || op.position === 'right'
-                const posStyle: React.CSSProperties =
-                    op.position === 'top'   ? { position: 'fixed', top: '80px',   left: '50%', transform: 'translateX(-50%)', zIndex: 100 } :
-                    op.position === 'left'  ? { position: 'fixed', left: '10px',  top: '50%',  transform: 'translateY(-50%)', zIndex: 100 } :
-                    op.position === 'right' ? { position: 'fixed', right: '10px', top: '50%',  transform: 'translateY(-50%)', zIndex: 100 } :
-                    {}
+                const handLen = op.hand.length
+                const overlapMargin = handLen > 14 ? -20 : handLen > 10 ? -14 : handLen > 6 ? -8 : 2
                 return (
-                    <div key={op.id} style={{ ...posStyle, display: 'flex', flexDirection: isVertical ? 'row' : 'column', alignItems: 'center', gap: '0.5rem' }}>
-                        {/* Player info badge */}
+                    <div key={op.id} style={{
+                        position: 'fixed',
+                        top: '58px',
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        zIndex: 100,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: '4px',
+                    }}>
+                        {/* Badge */}
                         <div style={{
-                            background: isMyTurn ? 'rgba(255,215,0,0.25)' : 'rgba(0,0,0,0.75)',
+                            background: isMyTurn ? 'rgba(255,215,0,0.25)' : 'rgba(0,0,0,0.8)',
                             border: isMyTurn ? '2px solid #ffd700' : '2px solid rgba(255,255,255,0.15)',
-                            borderRadius: '1rem', padding: '0.5rem 1rem',
-                            backdropFilter: 'blur(10px)',
-                            boxShadow: isMyTurn ? '0 0 20px rgba(255,215,0,0.4)' : 'none',
-                            minWidth: '120px', textAlign: 'center',
+                            borderRadius: '1rem', padding: '3px 12px',
+                            backdropFilter: 'blur(8px)',
+                            boxShadow: isMyTurn ? '0 0 16px rgba(255,215,0,0.4)' : 'none',
+                            textAlign: 'center', whiteSpace: 'nowrap',
                         }}>
-                            <div style={{ color: isMyTurn ? '#ffd700' : 'white', fontWeight: 'bold', fontSize: '1.1rem' }}>
+                            <span style={{ color: isMyTurn ? '#ffd700' : 'white', fontWeight: 'bold', fontSize: '0.95rem' }}>
                                 {op.name}{isMyTurn && ' 🎯'}
-                            </div>
-                            <div style={{ color: '#aaa', fontSize: '0.9rem' }}>
-                                {op.hand.length} cards · <span style={{ color: '#ffd700' }}>{op.score}pts</span>
-                            </div>
+                            </span>
+                            <span style={{ color: '#aaa', fontSize: '0.8rem', marginLeft: '6px' }}>
+                                {handLen} · <span style={{ color: '#ffd700' }}>{op.score}pts</span>
+                            </span>
                         </div>
-                        {/* Cards */}
-                        <div style={{ display: 'flex', flexDirection: isVertical ? 'column' : 'row', gap: isVertical ? '-8px' : '-10px', maxHeight: isVertical ? '300px' : 'auto', overflow: 'hidden' }}>
-                            {op.hand.slice(0, 12).map((_, i) => (
-                                <Image key={i} src="/images/back.png" alt="card back"
-                                    width={isVertical ? 50 : 45} height={isVertical ? 35 : 65}
-                                    style={{ borderRadius: '4px', margin: isVertical ? '-6px 0' : '0 -8px', boxShadow: '0 2px 6px rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.1)' }} />
-                            ))}
-                            {op.hand.length > 12 && (
-                                <div style={{ width: '45px', height: '65px', background: 'rgba(255,255,255,0.1)', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '0.8rem', fontWeight: 'bold' }}>
-                                    +{op.hand.length - 12}
+                        {/* Cards row - no overflow cut */}
+                        <div style={{
+                            display: 'flex',
+                            flexDirection: 'row',
+                            alignItems: 'flex-start',
+                            justifyContent: 'center',
+                            flexWrap: 'nowrap',
+                            // allow cards to extend beyond without clipping
+                            overflow: 'visible',
+                            padding: '2px 0',
+                        }}>
+                            {op.hand.map((_, i) => (
+                                <div key={i} style={{
+                                    marginLeft: i === 0 ? '0' : `${overlapMargin}px`,
+                                    zIndex: i,
+                                    position: 'relative',
+                                    flexShrink: 0,
+                                }}>
+                                    <Image src="/images/back.png" alt="card" width={36} height={52}
+                                        style={{ borderRadius: '3px', display: 'block', boxShadow: '0 2px 5px rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.12)' }} />
                                 </div>
-                            )}
+                            ))}
                         </div>
                         {showUno[op.id] && (
                             <div style={{
-                                position: 'absolute', top: '-30px',
+                                position: 'absolute', top: '-30px', left: '50%', transform: 'translateX(-50%)',
                                 background: 'linear-gradient(135deg,#ff6b35,#ff0600)',
-                                color: 'white', fontWeight: '900', fontSize: '1.8rem',
-                                padding: '0.3rem 1rem', borderRadius: '0.5rem',
-                                boxShadow: '0 0 20px rgba(255,0,0,0.6)',
-                                animation: 'bounce 0.5s ease',
-                                zIndex: 999,
+                                color: 'white', fontWeight: '900', fontSize: '1.4rem',
+                                padding: '2px 12px', borderRadius: '6px',
+                                boxShadow: '0 0 16px rgba(255,0,0,0.6)',
+                                whiteSpace: 'nowrap', zIndex: 999,
+                            }}>UNO!</div>
+                        )}
+                    </div>
+                )
+            })}
+
+            {/* ── LEFT PLAYER ── */}
+            {otherPlayers.filter(op => op.position === 'left').map(op => {
+                const isMyTurn = currentTurn === op.id
+                const handLen = op.hand.length
+                const overlapMargin = handLen > 14 ? -26 : handLen > 10 ? -20 : handLen > 6 ? -14 : -4
+                return (
+                    <div key={op.id} style={{
+                        position: 'fixed',
+                        left: '6px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        zIndex: 100,
+                        display: 'flex',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: '5px',
+                    }}>
+                        {/* Badge */}
+                        <div style={{
+                            background: isMyTurn ? 'rgba(255,215,0,0.25)' : 'rgba(0,0,0,0.8)',
+                            border: isMyTurn ? '2px solid #ffd700' : '2px solid rgba(255,255,255,0.15)',
+                            borderRadius: '1rem', padding: '6px 10px',
+                            backdropFilter: 'blur(8px)',
+                            boxShadow: isMyTurn ? '0 0 16px rgba(255,215,0,0.4)' : 'none',
+                            textAlign: 'center', flexShrink: 0,
+                        }}>
+                            <div style={{ color: isMyTurn ? '#ffd700' : 'white', fontWeight: 'bold', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
+                                {op.name}{isMyTurn && ' 🎯'}
+                            </div>
+                            <div style={{ color: '#aaa', fontSize: '0.75rem' }}>
+                                {handLen} · <span style={{ color: '#ffd700' }}>{op.score}pts</span>
+                            </div>
+                        </div>
+                        {/* Cards column - vertical fan */}
+                        <div style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'flex-start',
+                            justifyContent: 'center',
+                            flexWrap: 'nowrap',
+                            overflow: 'visible',
+                            padding: '0 2px',
+                            // constrain height so it doesn't push into top/bottom bars
+                            maxHeight: 'calc(100vh - 180px)',
+                        }}>
+                            {op.hand.map((_, i) => (
+                                <div key={i} style={{
+                                    marginTop: i === 0 ? '0' : `${overlapMargin}px`,
+                                    zIndex: i,
+                                    position: 'relative',
+                                    flexShrink: 0,
+                                }}>
+                                    <Image src="/images/back.png" alt="card" width={34} height={50}
+                                        style={{ borderRadius: '3px', display: 'block', boxShadow: '0 2px 5px rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.12)' }} />
+                                </div>
+                            ))}
+                        </div>
+                        {showUno[op.id] && (
+                            <div style={{
+                                position: 'absolute', top: '-28px', left: '50%', transform: 'translateX(-50%)',
+                                background: 'linear-gradient(135deg,#ff6b35,#ff0600)',
+                                color: 'white', fontWeight: '900', fontSize: '1.3rem',
+                                padding: '2px 10px', borderRadius: '6px',
+                                boxShadow: '0 0 14px rgba(255,0,0,0.6)',
+                                whiteSpace: 'nowrap', zIndex: 999,
+                            }}>UNO!</div>
+                        )}
+                    </div>
+                )
+            })}
+
+            {/* ── RIGHT PLAYER ── */}
+            {otherPlayers.filter(op => op.position === 'right').map(op => {
+                const isMyTurn = currentTurn === op.id
+                const handLen = op.hand.length
+                const overlapMargin = handLen > 14 ? -26 : handLen > 10 ? -20 : handLen > 6 ? -14 : -4
+                return (
+                    <div key={op.id} style={{
+                        position: 'fixed',
+                        right: '6px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        zIndex: 100,
+                        display: 'flex',
+                        flexDirection: 'row-reverse',
+                        alignItems: 'center',
+                        gap: '5px',
+                    }}>
+                        {/* Badge */}
+                        <div style={{
+                            background: isMyTurn ? 'rgba(255,215,0,0.25)' : 'rgba(0,0,0,0.8)',
+                            border: isMyTurn ? '2px solid #ffd700' : '2px solid rgba(255,255,255,0.15)',
+                            borderRadius: '1rem', padding: '6px 10px',
+                            backdropFilter: 'blur(8px)',
+                            boxShadow: isMyTurn ? '0 0 16px rgba(255,215,0,0.4)' : 'none',
+                            textAlign: 'center', flexShrink: 0,
+                        }}>
+                            <div style={{ color: isMyTurn ? '#ffd700' : 'white', fontWeight: 'bold', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
+                                {op.name}{isMyTurn && ' 🎯'}
+                            </div>
+                            <div style={{ color: '#aaa', fontSize: '0.75rem' }}>
+                                {handLen} · <span style={{ color: '#ffd700' }}>{op.score}pts</span>
+                            </div>
+                        </div>
+                        {/* Cards column */}
+                        <div style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'flex-end',
+                            justifyContent: 'center',
+                            flexWrap: 'nowrap',
+                            overflow: 'visible',
+                            padding: '0 2px',
+                            maxHeight: 'calc(100vh - 180px)',
+                        }}>
+                            {op.hand.map((_, i) => (
+                                <div key={i} style={{
+                                    marginTop: i === 0 ? '0' : `${overlapMargin}px`,
+                                    zIndex: i,
+                                    position: 'relative',
+                                    flexShrink: 0,
+                                }}>
+                                    <Image src="/images/back.png" alt="card" width={34} height={50}
+                                        style={{ borderRadius: '3px', display: 'block', boxShadow: '0 2px 5px rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.12)' }} />
+                                </div>
+                            ))}
+                        </div>
+                        {showUno[op.id] && (
+                            <div style={{
+                                position: 'absolute', top: '-28px', left: '50%', transform: 'translateX(-50%)',
+                                background: 'linear-gradient(135deg,#ff6b35,#ff0600)',
+                                color: 'white', fontWeight: '900', fontSize: '1.3rem',
+                                padding: '2px 10px', borderRadius: '6px',
+                                boxShadow: '0 0 14px rgba(255,0,0,0.6)',
+                                whiteSpace: 'nowrap', zIndex: 999,
                             }}>UNO!</div>
                         )}
                     </div>
@@ -1299,89 +1454,87 @@ export default function UnoGame() {
 
             {/* ── OVAL GREEN TABLE ── */}
             <div style={{
-                position: 'relative',
-                width: 'min(680px, 90vw)',
-                height: 'min(420px, 55vw)',
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                width: 'min(560px, 60vw)',
+                height: 'min(360px, 46vw)',
                 borderRadius: '50%',
-                background: 'radial-gradient(ellipse at 40% 40%, #2d8a3e 0%, #1a6b2a 40%, #0f4d1a 70%, #0a3a12 100%)',
+                background: 'radial-gradient(ellipse at 38% 38%, #2d8a3e 0%, #1a6b2a 45%, #0f4d1a 75%, #0a3a12 100%)',
                 border: '10px solid #5a3a1a',
-                boxShadow: '0 0 0 4px #3d2710, 0 0 60px rgba(0,0,0,0.7), inset 0 0 80px rgba(0,0,0,0.3)',
-                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                gap: '1rem',
-                marginTop: '80px',
-                marginBottom: '20px',
+                boxShadow: '0 0 0 4px #3d2710, 0 0 60px rgba(0,0,0,0.7), inset 0 0 80px rgba(0,0,0,0.25)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '12px',
+                zIndex: 50,
             }}>
-                {/* Felt texture lines */}
-                <div style={{ position: 'absolute', inset: '10px', borderRadius: '50%', border: '2px solid rgba(255,255,255,0.05)', pointerEvents: 'none' }} />
-                <div style={{ position: 'absolute', inset: '20px', borderRadius: '50%', border: '1px solid rgba(255,255,255,0.03)', pointerEvents: 'none' }} />
+                {/* Felt texture rings */}
+                <div style={{ position: 'absolute', inset: '12px', borderRadius: '50%', border: '2px solid rgba(255,255,255,0.04)', pointerEvents: 'none' }} />
+                <div style={{ position: 'absolute', inset: '24px', borderRadius: '50%', border: '1px solid rgba(255,255,255,0.02)', pointerEvents: 'none' }} />
 
                 {/* Turn indicator */}
                 <div style={{
-                    background: currentTurn === myPlayerId ? 'rgba(255,215,0,0.2)' : 'rgba(0,0,0,0.5)',
+                    background: currentTurn === myPlayerId ? 'rgba(255,215,0,0.2)' : 'rgba(0,0,0,0.55)',
                     border: `2px solid ${currentTurn === myPlayerId ? '#ffd700' : 'rgba(255,255,255,0.2)'}`,
-                    borderRadius: '2rem', padding: '0.5rem 1.5rem',
-                    backdropFilter: 'blur(10px)',
-                    boxShadow: currentTurn === myPlayerId ? '0 0 20px rgba(255,215,0,0.4)' : 'none',
+                    borderRadius: '2rem', padding: '5px 18px',
+                    boxShadow: currentTurn === myPlayerId ? '0 0 18px rgba(255,215,0,0.35)' : 'none',
                 }}>
-                    <p style={{ margin: 0, fontSize: '1.3rem', fontWeight: 'bold', color: currentTurn === myPlayerId ? '#ffd700' : 'white', textAlign: 'center' }}>
+                    <p style={{ margin: 0, fontSize: '1.15rem', fontWeight: 'bold', color: currentTurn === myPlayerId ? '#ffd700' : 'white', textAlign: 'center', whiteSpace: 'nowrap' }}>
                         {currentTurn === myPlayerId
                             ? '🎮 YOUR TURN!'
                             : `🎯 ${players.find(p => p.id === currentTurn)?.name?.replace(' (You)', '')}'s TURN`}
                     </p>
                 </div>
 
-                {/* Cards area */}
-                <div style={{ display: 'flex', gap: '2.5rem', alignItems: 'center' }}>
+                {/* Draw & Play piles */}
+                <div style={{ display: 'flex', gap: '2rem', alignItems: 'center' }}>
                     {/* Draw pile */}
-                    <div onClick={handleDrawPileClick} style={{
-                        cursor: currentTurn === myPlayerId && !colorPickerOpen && gameOn ? 'pointer' : 'not-allowed',
-                        opacity: currentTurn === myPlayerId && !colorPickerOpen && gameOn ? 1 : 0.55,
-                        position: 'relative', transition: 'transform 0.15s',
-                        transform: currentTurn === myPlayerId && !colorPickerOpen && gameOn ? 'scale(1.05)' : 'scale(1)',
-                    }}>
-                        <Image src="/images/back.png" alt="draw pile" width={90} height={135}
-                            style={{ borderRadius: '8px', boxShadow: '0 6px 20px rgba(0,0,0,0.5)', border: '2px solid rgba(255,255,255,0.1)' }} />
-                        <div style={{
-                            position: 'absolute', bottom: '-28px', left: '50%', transform: 'translateX(-50%)',
-                            color: 'white', fontSize: '0.9rem', fontWeight: 'bold', whiteSpace: 'nowrap',
-                            background: 'rgba(0,0,0,0.6)', padding: '0.2rem 0.6rem', borderRadius: '0.4rem',
-                        }}>📥 Draw</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+                        <div onClick={handleDrawPileClick} style={{
+                            cursor: currentTurn === myPlayerId && !colorPickerOpen && gameOn ? 'pointer' : 'not-allowed',
+                            opacity: currentTurn === myPlayerId && !colorPickerOpen && gameOn ? 1 : 0.55,
+                            transform: currentTurn === myPlayerId && !colorPickerOpen && gameOn ? 'scale(1.06)' : 'scale(1)',
+                            transition: 'transform 0.15s',
+                        }}>
+                            <Image src="/images/back.png" alt="draw pile" width={80} height={118}
+                                style={{ borderRadius: '7px', boxShadow: '0 6px 18px rgba(0,0,0,0.55)', border: '2px solid rgba(255,255,255,0.12)', display: 'block' }} />
+                        </div>
+                        <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.8rem', fontWeight: 'bold' }}>📥 DRAW</span>
                     </div>
 
                     {/* Play pile */}
-                    <div style={{ position: 'relative' }}>
-                        {topCard ? (
-                            <>
-                                <Image src={topCard.src} alt="play pile" width={90} height={135}
-                                    style={{ borderRadius: '8px', boxShadow: '0 6px 20px rgba(0,0,0,0.5)', border: '2px solid rgba(255,255,255,0.15)' }} />
-                                {(topCard.value === 13 || topCard.value === 14) && topCard.color !== 'any' && (
-                                    <div style={{
-                                        position: 'absolute', bottom: '6px', right: '6px',
-                                        width: '22px', height: '22px', borderRadius: '50%',
-                                        border: '2px solid white', backgroundColor: topCard.color,
-                                        boxShadow: '0 1px 4px rgba(0,0,0,0.4)',
-                                    }} />
-                                )}
-                                <div style={{
-                                    position: 'absolute', bottom: '-28px', left: '50%', transform: 'translateX(-50%)',
-                                    color: '#ffd700', fontSize: '0.85rem', fontWeight: 'bold', whiteSpace: 'nowrap',
-                                    background: 'rgba(0,0,0,0.6)', padding: '0.2rem 0.6rem', borderRadius: '0.4rem',
-                                }}>{getCardName(topCard)}</div>
-                            </>
-                        ) : (
-                            <div style={{ width: '90px', height: '135px', borderRadius: '8px', border: '2px dashed rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#aaa', fontSize: '0.9rem' }}>Empty</div>
-                        )}
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+                        <div style={{ position: 'relative' }}>
+                            {topCard ? (
+                                <>
+                                    <Image src={topCard.src} alt="play pile" width={80} height={118}
+                                        style={{ borderRadius: '7px', boxShadow: '0 6px 18px rgba(0,0,0,0.55)', border: '2px solid rgba(255,255,255,0.15)', display: 'block' }} />
+                                    {(topCard.value === 13 || topCard.value === 14) && topCard.color !== 'any' && (
+                                        <div style={getWildcardColorStyle(topCard.color)} />
+                                    )}
+                                </>
+                            ) : (
+                                <div style={{ width: '80px', height: '118px', borderRadius: '7px', border: '2px dashed rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#aaa', fontSize: '0.8rem' }}>Empty</div>
+                            )}
+                        </div>
+                        <span style={{ color: '#ffd700', fontSize: '0.8rem', fontWeight: 'bold', whiteSpace: 'nowrap', maxWidth: '90px', textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {topCard ? getCardName(topCard) : '—'}
+                        </span>
                     </div>
                 </div>
 
-                {/* Scores row */}
-                <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', justifyContent: 'center', marginTop: '0.5rem' }}>
+                {/* Scores */}
+                <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', justifyContent: 'center' }}>
                     {players.map(p => (
                         <span key={p.id} style={{
                             color: p.id === myPlayerId ? '#ffd700' : '#ddd',
                             fontWeight: p.id === myPlayerId ? 'bold' : 'normal',
-                            fontSize: '0.95rem',
-                            background: 'rgba(0,0,0,0.4)', padding: '0.2rem 0.7rem', borderRadius: '1rem',
+                            fontSize: '0.8rem',
+                            background: 'rgba(0,0,0,0.45)', padding: '2px 8px', borderRadius: '1rem',
+                            whiteSpace: 'nowrap',
                         }}>
                             {p.id === myPlayerId ? '👤' : '👥'} {p.name.replace(' (You)', '')}: <span style={{ color: '#ffd700' }}>{p.score}pts</span>
                         </span>
@@ -1389,91 +1542,140 @@ export default function UnoGame() {
                 </div>
             </div>
 
-            {/* PLAYER HAND */}
+            {/* ── PLAYER HAND (bottom) ── */}
             <div style={{
-                position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 150,
-                background: 'linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.7) 80%, transparent 100%)',
-                padding: '1rem 1rem 1.5rem',
-                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.6rem',
+                position: 'fixed',
+                bottom: 0,
+                left: 0,
+                right: 0,
+                zIndex: 150,
+                background: 'linear-gradient(to top, rgba(0,0,0,0.97) 0%, rgba(0,0,0,0.75) 75%, transparent 100%)',
+                padding: '0.6rem 0.5rem 1rem',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '5px',
+                // IMPORTANT: allow cards to lift upward without clipping
+                overflow: 'visible',
             }}>
-                {/* Player info */}
+                {/* Player info bar */}
                 <div style={{
                     display: 'flex', alignItems: 'center', gap: '1rem',
-                    background: currentTurn === myPlayerId ? 'rgba(255,215,0,0.15)' : 'rgba(0,0,0,0.5)',
+                    background: currentTurn === myPlayerId ? 'rgba(255,215,0,0.15)' : 'rgba(0,0,0,0.55)',
                     border: `2px solid ${currentTurn === myPlayerId ? '#ffd700' : 'rgba(255,255,255,0.15)'}`,
-                    borderRadius: '2rem', padding: '0.4rem 1.5rem',
-                    boxShadow: currentTurn === myPlayerId ? '0 0 20px rgba(255,215,0,0.3)' : 'none',
+                    borderRadius: '2rem', padding: '0.3rem 1.4rem',
+                    boxShadow: currentTurn === myPlayerId ? '0 0 18px rgba(255,215,0,0.3)' : 'none',
+                    flexShrink: 0,
                 }}>
-                    <span style={{ color: currentTurn === myPlayerId ? '#ffd700' : 'white', fontWeight: 'bold', fontSize: '1.1rem' }}>
+                    <span style={{ color: currentTurn === myPlayerId ? '#ffd700' : 'white', fontWeight: 'bold', fontSize: '1rem' }}>
                         👤 {myPlayer?.name ?? 'YOU'}{currentTurn === myPlayerId && ' 🎯'}
                     </span>
-                    <span style={{ color: '#aaa', fontSize: '1rem' }}>
+                    <span style={{ color: '#aaa', fontSize: '0.9rem' }}>
                         {myPlayer?.hand.length ?? 0} cards · <span style={{ color: '#ffd700' }}>{myPlayer?.score ?? 0}pts</span>
                     </span>
                 </div>
 
-                {/* Hand */}
-                <div className="player-hand" style={{
-                    display: 'flex', flexWrap: 'nowrap', justifyContent: 'center',
-                    gap: myPlayer && myPlayer.hand.length > 10 ? '-8px' : '4px',
-                    overflowX: 'auto', maxWidth: '100vw', padding: '0.5rem 1rem',
-                }}>
+                {/* Cards row */}
+                <div
+                    className="player-hand"
+                    style={{
+                        display: 'flex',
+                        flexDirection: 'row',
+                        flexWrap: 'nowrap',
+                        alignItems: 'flex-end',
+                        justifyContent: 'center',
+                        width: '100%',
+                        // horizontal scroll if too many cards, never clip vertically
+                        overflowX: 'auto',
+                        overflowY: 'visible',
+                        padding: '6px 12px 2px',
+                        // hide scrollbar aesthetically
+                        scrollbarWidth: 'none',
+                    }}
+                >
                     {(myPlayer?.hand ?? []).map((card, i) => {
                         const tc = playPile[playPile.length - 1]
-                        const playable = tc && (card.value === tc.value || card.color === tc.color || card.color === 'any' || tc.color === 'any')
+                        const playable = tc && (
+                            card.value === tc.value || card.color === tc.color ||
+                            card.color === 'any' || tc.color === 'any'
+                        )
                         const canAct = currentTurn === myPlayerId && !colorPickerOpen && gameOn
+                        const handLen = myPlayer?.hand.length ?? 1
+                        // Dynamic overlap so all cards fit on screen
+                        const overlapMargin =
+                            handLen > 16 ? -42
+                            : handLen > 13 ? -34
+                            : handLen > 10 ? -24
+                            : handLen > 7  ? -14
+                            : handLen > 4  ? -4
+                            : 4
+
                         return (
-                            <div key={i} onClick={() => handlePlayerCardClick(i)} style={{
-                                cursor: canAct && playable ? 'pointer' : 'not-allowed',
-                                transform: canAct && playable ? 'translateY(-14px)' : 'none',
-                                transition: 'transform 0.2s, box-shadow 0.2s',
-                                flexShrink: 0,
-                                marginLeft: i > 0 && myPlayer && myPlayer.hand.length > 8 ? '-20px' : '0',
-                                zIndex: i,
-                                position: 'relative',
-                            }}>
-                                <Image src={card.src} alt={`card-${i}`} width={75} height={112}
+                            <div
+                                key={i}
+                                onClick={() => handlePlayerCardClick(i)}
+                                style={{
+                                    marginLeft: i === 0 ? '0' : `${overlapMargin}px`,
+                                    zIndex: i,
+                                    position: 'relative',
+                                    flexShrink: 0,
+                                    cursor: canAct && playable ? 'pointer' : 'not-allowed',
+                                    // lift playable cards upward — needs parent overflow:visible
+                                    transform: canAct && playable ? 'translateY(-18px)' : 'translateY(0px)',
+                                    transition: 'transform 0.18s ease',
+                                }}
+                            >
+                                <Image
+                                    src={card.src}
+                                    alt={`card-${i}`}
+                                    width={70}
+                                    height={105}
                                     style={{
-                                        borderRadius: '7px',
-                                        opacity: canAct ? (playable ? 1 : 0.45) : 0.6,
-                                        outline: canAct && playable ? '3px solid rgba(255,215,0,0.85)' : 'none',
+                                        borderRadius: '6px',
+                                        display: 'block',
+                                        opacity: canAct ? (playable ? 1 : 0.42) : 0.6,
+                                        outline: canAct && playable ? '3px solid rgba(255,215,0,0.9)' : 'none',
                                         outlineOffset: '2px',
                                         boxShadow: canAct && playable
-                                            ? '0 0 15px rgba(255,215,0,0.5), 0 4px 12px rgba(0,0,0,0.4)'
-                                            : '0 2px 8px rgba(0,0,0,0.3)',
+                                            ? '0 0 16px rgba(255,215,0,0.5), 0 5px 12px rgba(0,0,0,0.5)'
+                                            : '0 3px 8px rgba(0,0,0,0.4)',
                                         border: '1px solid rgba(255,255,255,0.1)',
-                                    }} />
+                                    }}
+                                />
                             </div>
                         )
                     })}
                 </div>
 
+                {/* UNO shout for local player */}
                 {showUno[myPlayerId] && (
                     <div style={{
-                        position: 'absolute', top: '-50px', left: '50%', transform: 'translateX(-50%)',
+                        position: 'absolute',
+                        top: '-58px',
+                        left: '50%',
+                        transform: 'translateX(-50%)',
                         background: 'linear-gradient(135deg,#ff6b35,#ff0600)',
-                        color: 'white', fontWeight: '900', fontSize: '2.2rem',
-                        padding: '0.4rem 1.5rem', borderRadius: '0.8rem',
-                        boxShadow: '0 0 30px rgba(255,0,0,0.7)',
-                        zIndex: 999,
+                        color: 'white', fontWeight: '900', fontSize: '2rem',
+                        padding: '0.35rem 1.4rem', borderRadius: '0.8rem',
+                        boxShadow: '0 0 28px rgba(255,0,0,0.7)',
+                        zIndex: 999, whiteSpace: 'nowrap',
                     }}>UNO! 🃏</div>
                 )}
             </div>
 
-            {/* COLOR PICKER */}
+            {/* ── COLOR PICKER ── */}
             {colorPickerOpen && currentTurn === myPlayerId && (
                 <div style={{
                     position: 'fixed', inset: 0, zIndex: 500,
-                    background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)',
+                    background: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(12px)',
                     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                    gap: '2rem',
                 }}>
                     <div style={{
-                        background: 'rgba(0,0,0,0.9)', border: '2px solid rgba(255,215,0,0.5)',
+                        background: 'rgba(0,0,0,0.92)', border: '2px solid rgba(255,215,0,0.5)',
                         borderRadius: '2rem', padding: '3rem 4rem', textAlign: 'center',
                         boxShadow: '0 0 60px rgba(255,215,0,0.2)',
                     }}>
-                        <p style={{ color: '#ffd700', fontSize: '2rem', fontWeight: 'bold', marginBottom: '2rem' }}>
+                        <p style={{ color: '#ffd700', fontSize: '2rem', fontWeight: 'bold', marginBottom: '2rem', marginTop: 0 }}>
                             🎨 Choose a Color
                         </p>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
@@ -1485,14 +1687,13 @@ export default function UnoGame() {
                             ].map(({ color, label, bg }) => (
                                 <button key={color} onClick={() => handleColorChosen(color)}
                                     style={{
-                                        padding: '1.2rem 2rem', fontSize: '1.4rem', fontWeight: 'bold',
+                                        padding: '1.1rem 2rem', fontSize: '1.3rem', fontWeight: 'bold',
                                         background: bg, color: 'white', border: 'none', borderRadius: '1rem',
-                                        cursor: 'pointer', boxShadow: '0 4px 15px rgba(0,0,0,0.3)',
-                                        transition: 'transform 0.15s',
-                                        minWidth: '160px',
+                                        cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,0,0,0.3)',
+                                        transition: 'transform 0.15s', minWidth: '150px',
                                     }}
-                                    onMouseEnter={e => { (e.target as HTMLElement).style.transform = 'scale(1.08)' }}
-                                    onMouseLeave={e => { (e.target as HTMLElement).style.transform = 'scale(1)' }}
+                                    onMouseEnter={e => { (e.currentTarget).style.transform = 'scale(1.08)' }}
+                                    onMouseLeave={e => { (e.currentTarget).style.transform = 'scale(1)' }}
                                 >{label}</button>
                             ))}
                         </div>
@@ -1500,60 +1701,65 @@ export default function UnoGame() {
                 </div>
             )}
 
-            {/* ROUND WINNER OVERLAY */}
+            {/* ── ROUND WINNER ── */}
             {roundVisible && (
                 <div style={{
                     position: 'fixed', inset: 0, zIndex: 600,
-                    background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)',
+                    background: 'rgba(0,0,0,0.82)', backdropFilter: 'blur(10px)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>
                     <div style={{
-                        background: 'linear-gradient(135deg, rgba(255,215,0,0.2), rgba(0,0,0,0.9))',
+                        background: 'linear-gradient(135deg, rgba(255,215,0,0.18), rgba(0,0,0,0.92))',
                         border: '3px solid #ffd700', borderRadius: '2rem',
                         padding: '3rem 5rem', textAlign: 'center',
-                        boxShadow: '0 0 60px rgba(255,215,0,0.4)',
-                        animation: 'popIn 0.4s ease',
+                        boxShadow: '0 0 60px rgba(255,215,0,0.35)',
                     }}>
-                        <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>🏆</div>
-                        <p style={{ color: '#ffd700', fontSize: '2.5rem', fontWeight: '900', margin: 0 }}>
+                        <div style={{ fontSize: '4rem', marginBottom: '0.8rem' }}>🏆</div>
+                        <p style={{ color: '#ffd700', fontSize: '2.4rem', fontWeight: '900', margin: 0 }}>
                             {roundWinner} won the round!
                         </p>
-                        <p style={{ color: '#aaa', fontSize: '1.2rem', marginTop: '0.8rem' }}>Next round starting soon…</p>
+                        <p style={{ color: '#aaa', fontSize: '1.1rem', marginTop: '0.6rem' }}>Next round starting soon…</p>
                     </div>
                 </div>
             )}
 
-            {/* GAME WINNER OVERLAY */}
+            {/* ── GAME WINNER ── */}
             {gameVisible && (
                 <div style={{
                     position: 'fixed', inset: 0, zIndex: 700,
-                    background: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(15px)',
+                    background: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(16px)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>
                     <div style={{
-                        background: 'linear-gradient(135deg, rgba(255,215,0,0.15), rgba(0,0,0,0.95))',
+                        background: 'linear-gradient(135deg, rgba(255,215,0,0.12), rgba(0,0,0,0.96))',
                         border: '3px solid #ffd700', borderRadius: '2.5rem',
-                        padding: '4rem 5rem', textAlign: 'center',
-                        boxShadow: '0 0 80px rgba(255,215,0,0.3)',
-                        minWidth: '380px',
+                        padding: '3.5rem 4.5rem', textAlign: 'center',
+                        boxShadow: '0 0 80px rgba(255,215,0,0.25)',
+                        minWidth: '360px', maxWidth: '90vw',
                     }}>
-                        <div style={{ fontSize: '5rem', marginBottom: '1rem' }}>
+                        <div style={{ fontSize: '4.5rem', marginBottom: '0.8rem' }}>
                             {gameWinner === 'You' ? '🎉' : '😢'}
                         </div>
                         <p style={{
                             color: gameWinner === 'You' ? '#ffd700' : '#ff6b6b',
-                            fontSize: '2.8rem', fontWeight: '900', margin: '0 0 0.5rem',
+                            fontSize: '2.6rem', fontWeight: '900', margin: '0 0 0.4rem',
                         }}>
                             {gameWinner === 'You' ? 'YOU WIN!' : `${gameWinner} Wins!`}
                         </p>
-                        <p style={{ color: '#aaa', fontSize: '1.2rem', marginBottom: '2.5rem' }}>
+                        <p style={{ color: '#aaa', fontSize: '1.1rem', marginBottom: '2rem' }}>
                             {gameWinner === 'You' ? 'Congratulations! 🎊' : 'Better luck next time!'}
                         </p>
 
-                        {/* Scores */}
-                        <div style={{ marginBottom: '2rem', background: 'rgba(255,255,255,0.05)', borderRadius: '1rem', padding: '1rem' }}>
+                        {/* Score table */}
+                        <div style={{ marginBottom: '2rem', background: 'rgba(255,255,255,0.05)', borderRadius: '1rem', padding: '0.8rem 1rem' }}>
                             {players.map(p => (
-                                <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.4rem 1rem', color: p.id === myPlayerId ? '#ffd700' : '#ccc', fontWeight: p.id === myPlayerId ? 'bold' : 'normal', fontSize: '1.1rem' }}>
+                                <div key={p.id} style={{
+                                    display: 'flex', justifyContent: 'space-between',
+                                    padding: '0.35rem 0.8rem',
+                                    color: p.id === myPlayerId ? '#ffd700' : '#ccc',
+                                    fontWeight: p.id === myPlayerId ? 'bold' : 'normal',
+                                    fontSize: '1.05rem',
+                                }}>
                                     <span>{p.id === myPlayerId ? '👤' : '👥'} {p.name.replace(' (You)', '')}</span>
                                     <span>{p.score} pts</span>
                                 </div>
@@ -1561,26 +1767,26 @@ export default function UnoGame() {
                         </div>
 
                         <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-                            {/* Play Again vs CPU - always visible in AI mode */}
+                            {/* Play Again vs CPU */}
                             {gameMode === 'ai' && (
                                 <button onClick={handlePlayAgain} style={{
-                                    padding: '1.1rem 2.5rem', fontSize: '1.4rem', fontWeight: 'bold',
+                                    padding: '1rem 2.2rem', fontSize: '1.3rem', fontWeight: 'bold',
                                     background: 'linear-gradient(135deg,#4caf50,#2e7d32)',
                                     color: 'white', border: 'none', borderRadius: '1rem',
-                                    cursor: 'pointer', boxShadow: '0 4px 20px rgba(76,175,80,0.5)',
+                                    cursor: 'pointer', boxShadow: '0 4px 18px rgba(76,175,80,0.5)',
                                     transition: 'transform 0.15s',
                                 }}
-                                    onMouseEnter={e => { (e.target as HTMLElement).style.transform = 'scale(1.05)' }}
-                                    onMouseLeave={e => { (e.target as HTMLElement).style.transform = 'scale(1)' }}
+                                    onMouseEnter={e => { (e.currentTarget).style.transform = 'scale(1.05)' }}
+                                    onMouseLeave={e => { (e.currentTarget).style.transform = 'scale(1)' }}
                                 >🤖 Play Again vs CPU</button>
                             )}
-                            {/* Play Again for multiplayer host */}
+                            {/* Multiplayer host play again */}
                             {gameMode === 'multiplayer' && isHost && (
                                 <button onClick={handlePlayAgain} style={{
-                                    padding: '1.1rem 2.5rem', fontSize: '1.4rem', fontWeight: 'bold',
+                                    padding: '1rem 2.2rem', fontSize: '1.3rem', fontWeight: 'bold',
                                     background: 'linear-gradient(135deg,#2196f3,#0d47a1)',
                                     color: 'white', border: 'none', borderRadius: '1rem',
-                                    cursor: 'pointer', boxShadow: '0 4px 20px rgba(33,150,243,0.5)',
+                                    cursor: 'pointer', boxShadow: '0 4px 18px rgba(33,150,243,0.5)',
                                 }}>🔄 Play Again</button>
                             )}
                             <button onClick={() => {
@@ -1590,10 +1796,14 @@ export default function UnoGame() {
                                 else { setGameMode('menu'); gameModeRef.current = 'menu' }
                                 setMpState('lobby')
                             }} style={{
-                                padding: '1.1rem 2.5rem', fontSize: '1.4rem', fontWeight: 'bold',
+                                padding: '1rem 2.2rem', fontSize: '1.3rem', fontWeight: 'bold',
                                 background: 'rgba(255,255,255,0.1)', border: '2px solid rgba(255,255,255,0.3)',
                                 color: 'white', borderRadius: '1rem', cursor: 'pointer',
-                            }}>🏠 Main Menu</button>
+                                transition: 'transform 0.15s',
+                            }}
+                                onMouseEnter={e => { (e.currentTarget).style.transform = 'scale(1.05)' }}
+                                onMouseLeave={e => { (e.currentTarget).style.transform = 'scale(1)' }}
+                            >🏠 Main Menu</button>
                         </div>
                     </div>
                 </div>
