@@ -635,34 +635,35 @@ export default function UnoGame() {
         }
     }, [myPlayerName, bindChannelEvents])
     // #endregion
-    // #region JOIN ROOM
-    const joinRoom = useCallback(async () => {
-        if (!myPlayerName.trim())  { setMpError('Please enter your name');   return }
-        if (!inputRoomCode.trim()) { setMpError('Please enter a room code'); return }
-        if (joiningRef.current) return
-        joiningRef.current = true
-        try {
-            const code = inputRoomCode.toUpperCase().trim()
-            setRoomCode(code); roomCodeRef.current = code
-            setIsHost(false); myPlayerNameRef.current = myPlayerName
-            const tempId = ('temp_' + Date.now() + '_' + Math.random().toString(36).substring(7)) as Player['id']
-            setMyPlayerId(tempId); myPlayerIdRef.current = tempId            const pusher = await getPusherInstance() as { subscribe: (ch: string) => PusherChannel }
-            const channel = pusher.subscribe(`uno-room-${code}`)
-            setMpChannel(channel); bindChannelEvents(channel)
-            setMpConnectedPlayers(prev => {
-                if (prev.find(p => p.name === myPlayerName)) return prev
-                return [...prev, { id: tempId, name: myPlayerName }]
-            })
-            await pusherTrigger(`uno-room-${code}`, 'player-joined', { playerId: tempId, playerName: myPlayerName, requestSlot: true })
-            setMpState('waiting'); setMpError('')
-        } catch (error) {
-            console.error('Error joining room:', error)
-            setMpError('Failed to join room. Please try again.')
-        } finally {
-            setTimeout(() => { joiningRef.current = false }, 1000)
-        }
-    }, [myPlayerName, inputRoomCode, bindChannelEvents])
-    // #endregion
+  // #region JOIN ROOM
+const joinRoom = useCallback(async () => {
+    if (!myPlayerName.trim())  { setMpError('Please enter your name');   return }
+    if (!inputRoomCode.trim()) { setMpError('Please enter a room code'); return }
+    if (joiningRef.current) return
+    joiningRef.current = true
+    try {
+        const code = inputRoomCode.toUpperCase().trim()
+        setRoomCode(code); roomCodeRef.current = code
+        setIsHost(false); myPlayerNameRef.current = myPlayerName
+        const tempId = ('temp_' + Date.now() + '_' + Math.random().toString(36).substring(7)) as Player['id']
+        setMyPlayerId(tempId); myPlayerIdRef.current = tempId;
+        const pusher = await getPusherInstance() as { subscribe: (ch: string) => PusherChannel }
+        const channel = pusher.subscribe(`uno-room-${code}`)
+        setMpChannel(channel); bindChannelEvents(channel)
+        setMpConnectedPlayers(prev => {
+            if (prev.find(p => p.name === myPlayerName)) return prev
+            return [...prev, { id: tempId, name: myPlayerName }]
+        })
+        await pusherTrigger(`uno-room-${code}`, 'player-joined', { playerId: tempId, playerName: myPlayerName, requestSlot: true })
+        setMpState('waiting'); setMpError('')
+    } catch (error) {
+        console.error('Error joining room:', error)
+        setMpError('Failed to join room. Please try again.')
+    } finally {
+        setTimeout(() => { joiningRef.current = false }, 1000)
+    }
+}, [myPlayerName, inputRoomCode, bindChannelEvents])
+// #endregion
     // #region HOST ASSIGNS SLOT
     useEffect(() => {
         if (!isHost || !mpChannel || gameMode !== 'multiplayer') return
