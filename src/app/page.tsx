@@ -1000,15 +1000,17 @@ export default function UnoGame() {
     }, [currentTurn, gameOn, colorPickerOpen, playCPU, gameMode, players])
     // #endregion
     // #region HAND CARD RESPONSIVE
+       // #region DERIVED
+    const topCard      = playPile[playPile.length - 1]
+    const myPlayer     = players.find(p => p.id === myPlayerId)
+    const otherPlayers = players.filter(p => p.id !== myPlayerId)
+    // #endregion
+    // #region HAND CARD RESPONSIVE
     useEffect(() => {
         const playerHandContainer = document.querySelector('.player-hand')
         if (playerHandContainer && myPlayer) playerHandContainer.setAttribute('data-card-count', myPlayer.hand.length.toString())
     }, [myPlayer?.hand.length])
     // #endregion
-    // #region DERIVED
-    const topCard      = playPile[playPile.length - 1]
-    const myPlayer     = players.find(p => p.id === myPlayerId)
-    const otherPlayers = players.filter(p => p.id !== myPlayerId)
     const getCardName = (card: CardType) => {
         if (card.color === 'any') return card.drawValue === 4 ? 'Wild Draw 4' : 'Wild Card'
         const colorNames: Record<string, string> = { 'rgb(255, 6, 0)': 'Red', 'rgb(0, 170, 69)': 'Green', 'rgb(0, 150, 224)': 'Blue', 'rgb(255, 222, 0)': 'Yellow' }
