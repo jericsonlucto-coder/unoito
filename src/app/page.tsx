@@ -1614,9 +1614,9 @@ const joinRoom = useCallback(async () => {
                                     position: 'relative',
                                     flexShrink: 0,
                                     cursor: canAct && playable ? 'pointer' : 'not-allowed',
-                                    transform: canAct && playable ? 'translateY(-6px)' : 'translateY(0px)', // FIXED: increased lift from -18px to -28px
+                                    transform: canAct && playable ? 'translateY(-5px)' : 'translateY(0px)', // FIXED: increased lift from -18px to -28px
                                     transition: 'transform 0.18s ease',
-                                    marginBottom: canAct && playable ? '20px' : '0px', // FIXED: added margin to prevent clipping
+                                    marginBottom: canAct && playable ? '10px' : '0px', // FIXED: added margin to prevent clipping
                                 }}
                             >
                                 <Image
