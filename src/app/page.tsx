@@ -1030,141 +1030,57 @@ const joinRoom = useCallback(async () => {
         if (gameModeRef.current === 'multiplayer') await broadcastAction('TURN_CHANGE', { nextTurn })
     }, [getNextTurn, broadcastAction])
     // #endregion
-// #region PLAYER CARD CLICK
-const handlePlayerCardClick = useCallback(async (index: number) => {
-    if (currentTurnRef.current !== myPlayerIdRef.current || colorPickerRef.current || !gameOnRef.current) return
-    const order = playerOrderRef.current
-    const player = playersRef.current.find(p => p.id === myPlayerIdRef.current)
-    if (!player) return
-    const currentPlayPile = [...playPileRef.current]
-    const topCard = currentPlayPile[currentPlayPile.length - 1]
-    const card = player.hand[index]
-    const currentDir = directionRef.current
-    const isPlayable = card.value === topCard.value || card.color === topCard.color || card.color === 'any' || topCard.color === 'any'
-    if (!isPlayable) return
-    audioManager.playCardSound()
-    const newPlayerHand = player.hand.filter((_, i) => i !== index)
-    const playedCard = { ...card, playedByPlayer: true }
-    const newPlayPile = [...currentPlayPile, playedCard]
-    let newDir = currentDir
-    if (playedCard.value === 10) {
-        newDir = currentDir === 'clockwise' ? 'counter-clockwise' : 'clockwise'
-        setDirection(newDir)
-        directionRef.current = newDir
-    }
-    let updatedPlayers = playersRef.current.map(p =>
-        p.id === myPlayerIdRef.current ? { ...p, hand: newPlayerHand } : p
-    )
-    let nextTurn: Player['id'] | null = null
-    let drawnTargetPlayer: Player['id'] | null = null
-
-    // Handle draw cards (+2 / +4) - actually add cards to target player's hand
-    if (playedCard.drawValue > 0) {
-        audioManager.play('plusCard')
-        drawnTargetPlayer = getNextTurn(myPlayerIdRef.current, newDir, order)
-        nextTurn = drawnTargetPlayer
-
-        // Actually draw cards for the target player
-        const drawPlayerIndex = updatedPlayers.findIndex(p => p.id === drawnTargetPlayer)
-        if (drawPlayerIndex !== -1) {
-            const drawPlayer = { ...updatedPlayers[drawPlayerIndex], hand: [...updatedPlayers[drawPlayerIndex].hand] }
-            let updDeck = [...deckRef.current]
-            let updPile = [...newPlayPile]
-            for (let i = 0; i < playedCard.drawValue; i++) {
-                if (updDeck.length > 0) {
-                    drawPlayer.hand.push(updDeck.shift()!)
-                    audioManager.play('drawCard')
-                } else if (updPile.length > 1) {
-                    updDeck = shuffleDeck(updPile.slice(0, -1))
-                    updPile = [updPile[updPile.length - 1]]
-                    drawPlayer.hand.push(updDeck.shift()!)
-                    audioManager.play('drawCard')
-                }
-            }
-            updatedPlayers[drawPlayerIndex] = drawPlayer
-            setDeckState([...updDeck])
-            deckRef.current = updDeck
-            // Update play pile ref to reflect reshuffled pile if needed
-            playPileRef.current = updPile
+    // #region PLAYER CARD CLICK
+    const handlePlayerCardClick = useCallback(async (index: number) => {
+        if (currentTurnRef.current !== myPlayerIdRef.current || colorPickerRef.current || !gameOnRef.current) return
+        const order = playerOrderRef.current
+        const player = playersRef.current.find(p => p.id === myPlayerIdRef.current)
+        if (!player) return
+        const currentPlayPile = [...playPileRef.current]
+        const topCard = currentPlayPile[currentPlayPile.length - 1]
+        const card = player.hand[index]
+        const currentDir = directionRef.current
+        const isPlayable = card.value === topCard.value || card.color === topCard.color || card.color === 'any' || topCard.color === 'any'
+        if (!isPlayable) return
+        audioManager.playCardSound()
+        const newPlayerHand = player.hand.filter((_, i) => i !== index)
+        const playedCard = { ...card, playedByPlayer: true }
+        const newPlayPile = [...currentPlayPile, playedCard]
+        let newDir = currentDir
+        if (playedCard.value === 10) { newDir = currentDir === 'clockwise' ? 'counter-clockwise' : 'clockwise'; setDirection(newDir); directionRef.current = newDir }
+        let updatedPlayers = playersRef.current.map(p => p.id === myPlayerIdRef.current ? { ...p, hand: newPlayerHand } : p)
+        let nextTurn: Player['id'] | null = null, drawnTargetPlayer: Player['id'] | null = null
+        if (playedCard.drawValue > 0) { audioManager.play('plusCard'); drawnTargetPlayer = getNextTurn(myPlayerIdRef.current, newDir, order); nextTurn = drawnTargetPlayer }
+        else if (playedCard.value === 11) { const skipped = getNextTurn(myPlayerIdRef.current, newDir, order); nextTurn = getNextTurn(skipped, newDir, order) }
+        setPlayers([...updatedPlayers]); playersRef.current = [...updatedPlayers]
+        setPlayPile([...newPlayPile]); playPileRef.current = newPlayPile
+        if (newPlayerHand.length === 1) { triggerUno(myPlayerIdRef.current); if (gameModeRef.current === 'multiplayer') await broadcastAction('UNO_SHOUT', { playerId: myPlayerIdRef.current }) }
+        if (newPlayerHand.length === 0) { await checkForWinner(updatedPlayers); return }
+        if (playedCard.color === 'any' && playedCard.value === 13) {
+            if (gameModeRef.current === 'multiplayer') await broadcastAction('PLAY_CARD', { card: playedCard, playerHandCount: newPlayerHand.length, cardIndex: index, newDirection: newDir !== currentDir ? newDir : null, nextTurn: null, drawAmount: playedCard.drawValue, drawTargetPlayer: drawnTargetPlayer, colorChosen: true })
+            setColorPickerOpen(true); colorPickerRef.current = true
+            return
         }
-    } else if (playedCard.value === 11) {
-        // Skip: skip the next player, give turn to the one after
-        const skipped = getNextTurn(myPlayerIdRef.current, newDir, order)
-        nextTurn = getNextTurn(skipped, newDir, order)
-    }
-
-    setPlayers([...updatedPlayers])
-    playersRef.current = [...updatedPlayers]
-    setPlayPile([...newPlayPile])
-    playPileRef.current = newPlayPile
-
-    if (newPlayerHand.length === 1) {
-        triggerUno(myPlayerIdRef.current)
-        if (gameModeRef.current === 'multiplayer') await broadcastAction('UNO_SHOUT', { playerId: myPlayerIdRef.current })
-    }
-    if (newPlayerHand.length === 0) {
-        await checkForWinner(updatedPlayers)
-        return
-    }
-
-    // Wild card (value 13) - open color picker, defer turn change
-    if (playedCard.color === 'any' && playedCard.value === 13) {
-        if (gameModeRef.current === 'multiplayer') {
-            await broadcastAction('PLAY_CARD', {
-                card: playedCard,
-                playerHandCount: newPlayerHand.length,
-                cardIndex: index,
-                newDirection: newDir !== currentDir ? newDir : null,
-                nextTurn: null,
-                drawAmount: playedCard.drawValue,
-                drawTargetPlayer: drawnTargetPlayer,
-                colorChosen: true,
-            })
-        }
-        setColorPickerOpen(true)
-        colorPickerRef.current = true
-        return
-    }
-
-    // Wild Draw 4 (value 14) - open color picker, defer turn change
-    if (playedCard.color === 'any' && playedCard.value === 14) {
-        if (gameModeRef.current === 'multiplayer') {
-            await broadcastAction('PLAY_CARD', {
-                card: playedCard,
-                playerHandCount: newPlayerHand.length,
-                cardIndex: index,
-                newDirection: newDir !== currentDir ? newDir : null,
-                nextTurn: null,
-                drawAmount: playedCard.drawValue,
-                drawTargetPlayer: drawnTargetPlayer,
-                colorChosen: true,
-            })
-        }
-        setColorPickerOpen(true)
-        colorPickerRef.current = true
-        return
-    }
-
-    if (!playedCard.drawValue && playedCard.value !== 11 && !nextTurn) {
-        nextTurn = getNextTurn(myPlayerIdRef.current, newDir, order)
-    }
-    if (nextTurn) {
-        setCurrentTurn(nextTurn)
-        currentTurnRef.current = nextTurn
-    }
-    if (gameModeRef.current === 'multiplayer') {
-        await broadcastAction('PLAY_CARD', {
-            card: playedCard,
-            playerHandCount: newPlayerHand.length,
-            cardIndex: index,
-            newDirection: newDir !== currentDir ? newDir : null,
-            nextTurn,
-            drawAmount: playedCard.drawValue,
-            drawTargetPlayer: drawnTargetPlayer,
-        })
-    }
-}, [triggerUno, checkForWinner, getNextTurn, broadcastAction])
-// #endregion
+        if (!playedCard.drawValue && playedCard.value !== 11 && !nextTurn) nextTurn = getNextTurn(myPlayerIdRef.current, newDir, order)
+        if (nextTurn) { setCurrentTurn(nextTurn); currentTurnRef.current = nextTurn }
+        if (gameModeRef.current === 'multiplayer') await broadcastAction('PLAY_CARD', { card: playedCard, playerHandCount: newPlayerHand.length, cardIndex: index, newDirection: newDir !== currentDir ? newDir : null, nextTurn, drawAmount: playedCard.drawValue, drawTargetPlayer: drawnTargetPlayer })
+    }, [triggerUno, checkForWinner, getNextTurn, broadcastAction])
+    // #endregion
+    // #region COLOR CHOSEN
+    const handleColorChosen = useCallback(async (color: string) => {
+        audioManager.play('colorButton')
+        const order = playerOrderRef.current
+        const newPile = [...playPileRef.current]
+        const lastCard = newPile[newPile.length - 1]
+        if (lastCard && lastCard.value === 13) newPile[newPile.length - 1] = { ...lastCard, color }
+        setPlayPile([...newPile]); playPileRef.current = newPile
+        setColorPickerOpen(false); colorPickerRef.current = false
+        setWildCardColor(color); setSelectedWildColor(color); selectedWildColorRef.current = color
+        const nextTurn = getNextTurn(myPlayerIdRef.current, directionRef.current, order)
+        setCurrentTurn(nextTurn); currentTurnRef.current = nextTurn
+        if (gameModeRef.current === 'multiplayer') { await broadcastAction('COLOR_CHOSEN', { color, nextTurn }); await broadcastAction('TURN_CHANGE', { nextTurn }) }
+    }, [getNextTurn, broadcastAction])
+    // #endregion
     // #region PLAY AGAIN
     const handlePlayAgain = useCallback(() => {
         audioManager.play('playAgain')
